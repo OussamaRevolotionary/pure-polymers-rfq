@@ -104,7 +104,7 @@ The WebGL pellet field uses **white, black, blue and amber** as requested; amber
 These are deliberately unanswered in the build — each needs a decision from your side, and each is a one-line change:
 
 1. **TDS library.** The confirmation promises data sheets. Which PDFs, in which Drive folder? (Workflow B reads a `TDS_Library` sheet tab: product id → Drive file id.)
-2. **Desk routing addresses.** Real inboxes for Color Lab / Additives / Compounding. Until then everything runs in pilot mode to oussama.g@oussamalabs.com.
+2. **Desk routing addresses.** Real inboxes for Color Lab / Additives / Compounding. Until then the internal alert runs in demo mode straight to Fahad, bcc OussamaLabs.
 3. **The 5% mechanic.** Today it is "5% OFF when you use our color visualizer tool". The mockup says the offer is *noted on the quotation* when the buyer quotes their reference. Confirm the exact wording you want to honour.
 4. **Desk hours.** Sunday–Thursday 08:00–17:00 AST is assumed for the "quotation within 2 business days" calculation.
 5. **Desiccant storage wording.** The page states both "use within 16–24 hours after opening" and "valid for 8 to 84 hours if exposed to open air". The build uses the conservative 16–24 h; worth correcting on the site.

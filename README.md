@@ -8,8 +8,9 @@ Built for **Pure Polymers for Industries** (Modon 3, Jeddah) by **OussamaLabs**.
 
 This is a concept mockup, not the live purepolymers.net page. The backend is real: the
 quote form writes to a real ledger and spreadsheet and sends real email, and the
-assistant answers from the real catalog through OpenAI. Internal notifications go to a
-pilot inbox until Pure Polymers confirms their desk addresses.
+assistant answers from the real catalog through OpenAI. Until Pure Polymers confirms
+their desk addresses, the new-quote alert goes to their contact directly rather than to
+the routed desks — see the note at the end of this file.
 
 ---
 
@@ -97,4 +98,9 @@ Known gaps:
   no per-IP rate limit. That is fine for a pitch demo; before this sits on purepolymers.net
   long term, put a rate limit or a shared token in front of it.
 
-Pilot mode is on: internal notifications go to oussama.g@oussamalabs.com until Pure Polymers confirms the desk addresses. Buyer confirmations always go to the buyer.
+Demo mode is on. The internal "new quote" alert goes straight to Fahad, so he feels the
+notification his own desk would get seconds after a submission rather than being told
+about it; OussamaLabs is on the bcc line. Infrastructure alerts (a Sheets write failing)
+go only to OussamaLabs — the client should never see one. Buyer confirmations always go
+to whoever filled the form. Switching `CONFIG.mode` to `live` hands internal mail over
+to the real desk addresses.

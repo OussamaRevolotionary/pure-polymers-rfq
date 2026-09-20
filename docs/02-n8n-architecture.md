@@ -160,8 +160,15 @@ Backing resources: data table `pp_quote_ledger`, master spreadsheet
 1. Upload the TDS PDFs to Drive and fill the `TDS_Library` tab (until then the buyer email
    ships without attachments, by design).
 2. Set `CONFIG.mode` to `'live'` in *Validate & Normalize* and *Scan SLA* once the desk
-   addresses are confirmed. Until then every internal email goes to the pilot recipient;
-   the buyer's confirmation always goes to the buyer.
+   addresses are confirmed. Until then the new-quote alert goes to `demoRecipient`
+   (Fahad) with `demoBcc` (OussamaLabs) on the bcc line, infrastructure failures go to
+   `opsRecipient` only, and the buyer's confirmation always goes to the buyer.
+
+   **One deployment detail:** on the live instance the *Send Sales Alert* node carries the
+   demo recipient as a mode-aware expression on the node itself, rather than reading it
+   from `CONFIG`. Behaviour is identical and it still hands over to the routed desks when
+   `mode` becomes `live`; re-importing `n8n/workflows/pp-b-quote-intake.json` replaces the
+   override with the config-driven version in this repo.
 3. Confirm the routing addresses (`sales.color@`, `technical@`, `compounds@`).
 4. Optional: WhatsApp Business template for the hot-lead ping (node present, disabled).
 5. Optional: an error workflow (Error Trigger → Gmail) selected in each workflow's settings.

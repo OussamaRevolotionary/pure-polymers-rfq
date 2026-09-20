@@ -136,7 +136,11 @@ await run('Compose Sales Alert', async () => {
     },
   })
   const alert = out[0].json
-  assert(alert.to === 'oussama.g@oussamalabs.com', 'pilot mode keeps internal mail off the client domain')
+  // Demo mode deliberately sends the sales alert to Fahad so he feels the notification
+  // his desk would get. We stay on the bcc line: visible to us, invisible on his copy.
+  assert(alert.to === 'fahad@purepolymers.net', 'demo mode alerts the client directly')
+  assert(alert.bcc === 'oussama.g@oussamalabs.com', 'and bccs us so we know when he tries it')
+  assert(alert.cc === '', 'no cc in demo mode — his copy shows only his own address')
   assert(alert.subject.startsWith('🔥 HOT · PP-8942-AM'), 'subject leads with tier and reference')
   assert(alert.html.includes('Additives Technical Desk') && alert.html.includes('quotation due'), 'alert names the desk and the SLA')
   assert(alert.html.includes('wa.me/966546460891'), "one-tap WhatsApp to the buyer's number")

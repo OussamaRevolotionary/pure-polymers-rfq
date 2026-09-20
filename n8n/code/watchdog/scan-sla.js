@@ -9,7 +9,9 @@
 
 const CONFIG = {
   mode: 'pilot',
-  pilotRecipient: 'oussama.g@oussamalabs.com',
+  // Overdue-quote chasing stays internal while this is a demo: an unexpected
+  // "still unanswered" email days later would read as nagging, not as a feature.
+  opsRecipient: 'oussama.g@oussamalabs.com',
   salesRecipient: 'fahad@purepolymers.net',
   quoteLogUrl: 'https://docs.google.com/spreadsheets/d/1DUd4fQiYWlL86c7_Io0GjQ2oM6u8vcK99Bkw9xXs3ks/edit',
   openStatuses: ['New', 'In review'],
@@ -89,7 +91,7 @@ const html = shell({
 return [
   {
     json: {
-      to: CONFIG.mode === 'live' ? CONFIG.salesRecipient : CONFIG.pilotRecipient,
+      to: CONFIG.mode === 'live' ? CONFIG.salesRecipient : CONFIG.opsRecipient,
       subject: overdue.length
         ? '⏰ ' + overdue.length + ' Pure Polymers quotation(s) past due'
         : 'Pure Polymers — ' + last24h.length + ' new quote request(s) in the last 24 h',

@@ -3,7 +3,7 @@
   "name": "Pure Polymers — B — Quote Intake",
   "nodes": [
     {
-      "id": "b061fc08-3586-48ec-af35-9f5ba3a0a315",
+      "id": "b27dab0a-4faf-498c-96de-0a1e6fc4f285",
       "name": "Quote Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
@@ -20,10 +20,10 @@
           "ignoreBots": true
         }
       },
-      "webhookId": "481386a0-5424-435d-bb17-61f64ff35aa5"
+      "webhookId": "8a8dd77f-9604-4ac0-a377-c5b4d645f95b"
     },
     {
-      "id": "492f2b28-282b-4344-ac34-fbcbed400112",
+      "id": "21f72935-5b73-4035-93f7-ac391d3edbda",
       "name": "Validate & Normalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -34,11 +34,11 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "/**\n * Code node · \"Validate & Normalize\" (run once for all items)\n * In : Webhook item — body is a pp.quote.v1 payload from the quote configurator\n * Out: one item { valid, spam, httpStatus, errors[], config, lead{}, row{} }\n *\n * Nothing downstream re-reads the raw webhook body: this node is the only place\n * that trusts client input, and every field is length-capped and type-checked.\n */\n\nconst CONFIG = {\n  // 'pilot' → every INTERNAL email goes to pilotRecipient (buyer emails always go to the buyer).\n  // Switch to 'live' once Pure Polymers signs off on the routing addresses.\n  mode: 'pilot',\n  pilotRecipient: 'oussama.g@oussamalabs.com',\n  replyTo: 'info@purepolymers.net',\n  whatsappE164: '966546460891',\n  visualizerUrl: 'https://colorsvisualizer.com/',\n  quoteLogUrl: 'https://docs.google.com/spreadsheets/d/1DUd4fQiYWlL86c7_Io0GjQ2oM6u8vcK99Bkw9xXs3ks/edit',\n  slaBusinessHours: 18, // 2 business days on a 9 h desk\n  desk: { utcOffsetHours: 3, workDays: [0, 1, 2, 3, 4], openHour: 8, closeHour: 17 },\n}\n\nconst ROUTE_TEAM = {\n  color_pigment: 'Color Lab',\n  additive: 'Additives Technical Desk',\n  compound: 'Compounding Team',\n  unclassified: 'Sales Desk (triage)',\n}\nconst FAMILY_ROUTE = { CM: 'color_pigment', WM: 'color_pigment', BM: 'color_pigment', AM: 'additive', PC: 'compound' }\nconst VOLUME_SCORE = { lt5: 5, '5-25': 15, '25-100': 30, '100-500': 40, gt500: 45, unknown: 8 }\nconst TIMELINE_SCORE = { urgent: 25, month: 18, quarter: 10, planning: 4 }\nconst FREE_MAIL = ['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'icloud.com', 'live.com']\nconst EMAIL_RE = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/\n\nconst first = $input.first().json\nconst b = first && typeof first.body === 'object' && first.body !== null ? first.body : first\nconst errors = []\n\nconst s = (value, max) => String(value === undefined || value === null ? '' : value).replace(/[\\t\\r\\n]+/g, ' ').trim().slice(0, max || 300)\nconst lines = (value, max) => String(value === undefined || value === null ? '' : value).replace(/\\r/g, '').trim().slice(0, max || 1500)\nconst labelOf = (option) => (option && typeof option === 'object' ? s(option.label, 80) : '')\nconst yesNo = (value) => (value ? 'Yes' : 'No')\n\nif (s(b && b.schema, 20) !== 'pp.quote.v1') errors.push('unsupported schema')\n\nconst submissionId = s(b && b.submissionId, 64)\nif (!/^[0-9a-fA-F-]{16,64}$/.test(submissionId)) errors.push('submissionId missing or malformed')\n\nconst reference = s(b && b.reference, 20).toUpperCase()\nif (!/^PP-\\d{4}-[A-Z]{2}$/.test(reference)) errors.push('reference malformed')\n\nconst familyCode = s(b && b.family && b.family.code, 2).toUpperCase()\nconst route = FAMILY_ROUTE[familyCode] || 'unclassified'\n\nconst products = (Array.isArray(b && b.products) ? b.products : [])\n  .slice(0, 5)\n  .map((p) => ({\n    id: s(p && p.id, 40),\n    name: s(p && p.name, 80),\n    family: s(p && p.family, 20),\n    tds: s(p && p.tds, 40),\n    specs: (Array.isArray(p && p.specsReadable) ? p.specsReadable : [])\n      .slice(0, 14)\n      .map((r) => ({ label: s(r && r.label, 80), value: s(r && r.value, 200) }))\n      .filter((r) => r.label && r.value),\n  }))\n  .filter((p) => p.id && p.name)\nif (!products.length) errors.push('at least one product is required')\n\nconst contact = (b && b.contact) || {}\nconst email = s(contact.email, 160).toLowerCase()\nif (!EMAIL_RE.test(email)) errors.push('valid email is required')\nif (!s(contact.firstName, 60)) errors.push('first name is required')\nif (!s(contact.company, 100)) errors.push('company is required')\nif (!(b && b.consent && b.consent.contact === true)) errors.push('contact consent is required')\n\n// Honeypot: real buyers never see this field.\nconst spam = s(b && b.hp, 200) !== ''\n\nconst application = (b && b.application) || {}\nconst commercial = (b && b.commercial) || {}\nconst delivery = commercial.delivery || {}\nconst source = (b && b.source) || {}\n\nconst volumeId = s(commercial.annualVolume && commercial.annualVolume.id, 20)\nconst timelineId = s(commercial.timeline && commercial.timeline.id, 20)\nconst phone = s(contact.phone, 40)\nconst phoneDigits = phone.replace(/\\D/g, '')\nconst domain = email.split('@')[1] || ''\nconst businessEmail = Boolean(domain) && FREE_MAIL.indexOf(domain) === -1\n\nlet score = (VOLUME_SCORE[volumeId] || 0) + (TIMELINE_SCORE[timelineId] || 0)\nif (businessEmail) score += 10\nif (phoneDigits.length >= 9 && contact.whatsappOptIn === true) score += 5\nif (products.some((p) => p.specs.length >= 2)) score += 5\nif (s(commercial.targetPrice, 60) || s(commercial.benchmark, 80)) score += 5\nif (score > 100) score = 100\nconst tier = score >= 65 ? 'HOT' : score >= 40 ? 'WARM' : 'NURTURE'\n\n/* Saudi desk calendar: Sunday–Thursday, 08:00–17:00, Asia/Riyadh = UTC+3 year-round. */\nconst OFFSET_MS = CONFIG.desk.utcOffsetHours * 3600000\nconst DAY_MS = 86400000\nfunction parts(date) {\n  const d = new Date(date.getTime() + OFFSET_MS)\n  return { y: d.getUTCFullYear(), m: d.getUTCMonth(), day: d.getUTCDate(), dow: d.getUTCDay(), minutes: d.getUTCHours() * 60 + d.getUTCMinutes() }\n}\nfunction at(y, m, day, hour) {\n  return new Date(Date.UTC(y, m, day, hour, 0) - OFFSET_MS)\n}\nfunction nextOpening(after) {\n  for (let i = 0; i <= 7; i++) {\n    const p = parts(new Date(after.getTime() + i * DAY_MS))\n    const opening = at(p.y, p.m, p.day, CONFIG.desk.openHour)\n    if (CONFIG.desk.workDays.indexOf(p.dow) !== -1 && opening.getTime() > after.getTime()) return opening\n  }\n  return new Date(after.getTime() + DAY_MS)\n}\nfunction addBusinessHours(start, hours) {\n  let remaining = hours * 60\n  let cursor = new Date(start)\n  for (let guard = 0; guard < 64; guard++) {\n    const p = parts(cursor)\n    if (CONFIG.desk.workDays.indexOf(p.dow) === -1 || p.minutes >= CONFIG.desk.closeHour * 60) {\n      cursor = nextOpening(cursor)\n      continue\n    }\n    if (p.minutes < CONFIG.desk.openHour * 60) {\n      cursor = at(p.y, p.m, p.day, CONFIG.desk.openHour)\n      continue\n    }\n    const available = CONFIG.desk.closeHour * 60 - p.minutes\n    if (remaining <= available) return new Date(cursor.getTime() + remaining * 60000)\n    remaining -= available\n    cursor = nextOpening(at(p.y, p.m, p.day, CONFIG.desk.closeHour))\n  }\n  return cursor\n}\nconst fmt = (date) =>\n  new Intl.DateTimeFormat('en-GB', {\n    timeZone: 'Asia/Riyadh',\n    weekday: 'short',\n    day: 'numeric',\n    month: 'short',\n    hour: '2-digit',\n    minute: '2-digit',\n  }).format(date) + ' AST'\n\nconst receivedAt = new Date()\nconst slaDue = addBusinessHours(receivedAt, CONFIG.slaBusinessHours)\n\nconst polymers = (Array.isArray(application.polymers) ? application.polymers : []).map(labelOf).filter(Boolean).join(', ')\nconst specsText = products\n  .map((p) => p.name + ': ' + (p.specs.map((r) => r.label + ' = ' + r.value).join('; ') || 'no specification given'))\n  .join(' | ')\nconst utm = source.utm && typeof source.utm === 'object'\n  ? Object.keys(source.utm).slice(0, 6).map((k) => s(k, 20) + '=' + s(source.utm[k], 60)).join('&')\n  : ''\n\nconst lead = {\n  reference,\n  submissionId,\n  familyCode,\n  route,\n  team: ROUTE_TEAM[route],\n  tier,\n  score,\n  receivedAtIso: receivedAt.toISOString(),\n  receivedAtLocal: fmt(receivedAt),\n  slaDueIso: slaDue.toISOString(),\n  slaDueLocal: fmt(slaDue),\n  contact: {\n    firstName: s(contact.firstName, 60),\n    lastName: s(contact.lastName, 60),\n    fullName: (s(contact.firstName, 60) + ' ' + s(contact.lastName, 60)).trim(),\n    email,\n    phone,\n    phoneDigits,\n    whatsapp: contact.whatsappOptIn === true,\n    company: s(contact.company, 100),\n    role: labelOf(contact.role),\n    channel: s(contact.preferredChannel, 20) || 'email',\n    language: contact.language === 'ar' ? 'ar' : 'en',\n    businessEmail,\n  },\n  products,\n  application: {\n    polymers,\n    process: labelOf(application.process),\n    market: labelOf(application.market),\n    finalProduct: s(application.finalProduct, 160),\n  },\n  commercial: {\n    annualVolume: labelOf(commercial.annualVolume),\n    annualVolumeId: volumeId,\n    firstOrder: labelOf(commercial.firstOrder),\n    timeline: labelOf(commercial.timeline),\n    timelineId,\n    sampleRequested: commercial.sampleRequested === true,\n    country: s(delivery.country, 60),\n    city: s(delivery.city, 80),\n    incoterm: s(delivery.incoterm, 40),\n    targetPrice: s(commercial.targetPrice, 60),\n    benchmark: s(commercial.benchmark, 80),\n  },\n  notes: lines(b && b.notes, 1500),\n  source: {\n    page: s(source.page, 300),\n    referrer: s(source.referrer, 300),\n    utm,\n    prefilledBy: s(source.prefilledBy, 20),\n    locale: s(source.locale, 20),\n  },\n}\n\nconst row = {\n  received_at: lead.receivedAtIso,\n  reference: lead.reference,\n  status: 'New',\n  tier: lead.tier,\n  score: lead.score,\n  route: lead.route,\n  team: lead.team,\n  sla_due_at: lead.slaDueIso,\n  company: lead.contact.company,\n  contact_name: lead.contact.fullName,\n  role: lead.contact.role,\n  email: lead.contact.email,\n  phone: lead.contact.phone,\n  whatsapp: yesNo(lead.contact.whatsapp),\n  preferred_channel: lead.contact.channel,\n  language: lead.contact.language,\n  products: products.map((p) => p.name).join(' + '),\n  product_ids: products.map((p) => p.id).join(','),\n  specs: specsText,\n  polymers: lead.application.polymers,\n  process: lead.application.process,\n  market: lead.application.market,\n  final_product: lead.application.finalProduct,\n  annual_volume: lead.commercial.annualVolume,\n  first_order: lead.commercial.firstOrder,\n  timeline: lead.commercial.timeline,\n  sample: yesNo(lead.commercial.sampleRequested),\n  delivery_country: lead.commercial.country,\n  delivery_city: lead.commercial.city,\n  incoterm: lead.commercial.incoterm,\n  target_price: lead.commercial.targetPrice,\n  benchmark: lead.commercial.benchmark,\n  notes: lead.notes,\n  source_page: lead.source.page,\n  utm: lead.source.utm,\n  prefilled_by: lead.source.prefilledBy,\n  submission_id: lead.submissionId,\n}\n\nreturn [\n  {\n    json: {\n      valid: errors.length === 0 && !spam,\n      spam,\n      // Spam gets a 200 so bots learn nothing; real validation problems get 422.\n      httpStatus: spam ? 200 : errors.length ? 422 : 200,\n      errors,\n      config: CONFIG,\n      lead,\n      row,\n    },\n  },\n]\n"
+        "jsCode": "/**\n * Code node · \"Validate & Normalize\" (run once for all items)\n * In : Webhook item — body is a pp.quote.v1 payload from the quote configurator\n * Out: one item { valid, spam, httpStatus, errors[], config, lead{}, row{} }\n *\n * Nothing downstream re-reads the raw webhook body: this node is the only place\n * that trusts client input, and every field is length-capped and type-checked.\n */\n\nconst CONFIG = {\n  // 'pilot' → the internal \"new quote\" alert goes to demoRecipient instead of the real\n  // desk addresses. Switch to 'live' once Pure Polymers signs off on the routing.\n  // Buyer confirmations always go to the buyer, in either mode.\n  mode: 'pilot',\n  // While this is a demo, Fahad receives the sales alert himself, seconds after a\n  // submission, so he feels what his desk would feel rather than being told about it.\n  // OussamaLabs is bcc'd to know when he tries it, without cluttering his copy.\n  demoRecipient: 'fahad@purepolymers.net',\n  demoBcc: 'oussama.g@oussamalabs.com',\n  // Infrastructure failures are ours, not the client's: these never reach demoRecipient.\n  opsRecipient: 'oussama.g@oussamalabs.com',\n  replyTo: 'info@purepolymers.net',\n  whatsappE164: '966546460891',\n  visualizerUrl: 'https://colorsvisualizer.com/',\n  quoteLogUrl: 'https://docs.google.com/spreadsheets/d/1DUd4fQiYWlL86c7_Io0GjQ2oM6u8vcK99Bkw9xXs3ks/edit',\n  slaBusinessHours: 18, // 2 business days on a 9 h desk\n  desk: { utcOffsetHours: 3, workDays: [0, 1, 2, 3, 4], openHour: 8, closeHour: 17 },\n}\n\nconst ROUTE_TEAM = {\n  color_pigment: 'Color Lab',\n  additive: 'Additives Technical Desk',\n  compound: 'Compounding Team',\n  unclassified: 'Sales Desk (triage)',\n}\nconst FAMILY_ROUTE = { CM: 'color_pigment', WM: 'color_pigment', BM: 'color_pigment', AM: 'additive', PC: 'compound' }\nconst VOLUME_SCORE = { lt5: 5, '5-25': 15, '25-100': 30, '100-500': 40, gt500: 45, unknown: 8 }\nconst TIMELINE_SCORE = { urgent: 25, month: 18, quarter: 10, planning: 4 }\nconst FREE_MAIL = ['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'icloud.com', 'live.com']\nconst EMAIL_RE = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/\n\nconst first = $input.first().json\nconst b = first && typeof first.body === 'object' && first.body !== null ? first.body : first\nconst errors = []\n\nconst s = (value, max) => String(value === undefined || value === null ? '' : value).replace(/[\\t\\r\\n]+/g, ' ').trim().slice(0, max || 300)\nconst lines = (value, max) => String(value === undefined || value === null ? '' : value).replace(/\\r/g, '').trim().slice(0, max || 1500)\nconst labelOf = (option) => (option && typeof option === 'object' ? s(option.label, 80) : '')\nconst yesNo = (value) => (value ? 'Yes' : 'No')\n\nif (s(b && b.schema, 20) !== 'pp.quote.v1') errors.push('unsupported schema')\n\nconst submissionId = s(b && b.submissionId, 64)\nif (!/^[0-9a-fA-F-]{16,64}$/.test(submissionId)) errors.push('submissionId missing or malformed')\n\nconst reference = s(b && b.reference, 20).toUpperCase()\nif (!/^PP-\\d{4}-[A-Z]{2}$/.test(reference)) errors.push('reference malformed')\n\nconst familyCode = s(b && b.family && b.family.code, 2).toUpperCase()\nconst route = FAMILY_ROUTE[familyCode] || 'unclassified'\n\nconst products = (Array.isArray(b && b.products) ? b.products : [])\n  .slice(0, 5)\n  .map((p) => ({\n    id: s(p && p.id, 40),\n    name: s(p && p.name, 80),\n    family: s(p && p.family, 20),\n    tds: s(p && p.tds, 40),\n    specs: (Array.isArray(p && p.specsReadable) ? p.specsReadable : [])\n      .slice(0, 14)\n      .map((r) => ({ label: s(r && r.label, 80), value: s(r && r.value, 200) }))\n      .filter((r) => r.label && r.value),\n  }))\n  .filter((p) => p.id && p.name)\nif (!products.length) errors.push('at least one product is required')\n\nconst contact = (b && b.contact) || {}\nconst email = s(contact.email, 160).toLowerCase()\nif (!EMAIL_RE.test(email)) errors.push('valid email is required')\nif (!s(contact.firstName, 60)) errors.push('first name is required')\nif (!s(contact.company, 100)) errors.push('company is required')\nif (!(b && b.consent && b.consent.contact === true)) errors.push('contact consent is required')\n\n// Honeypot: real buyers never see this field.\nconst spam = s(b && b.hp, 200) !== ''\n\nconst application = (b && b.application) || {}\nconst commercial = (b && b.commercial) || {}\nconst delivery = commercial.delivery || {}\nconst source = (b && b.source) || {}\n\nconst volumeId = s(commercial.annualVolume && commercial.annualVolume.id, 20)\nconst timelineId = s(commercial.timeline && commercial.timeline.id, 20)\nconst phone = s(contact.phone, 40)\nconst phoneDigits = phone.replace(/\\D/g, '')\nconst domain = email.split('@')[1] || ''\nconst businessEmail = Boolean(domain) && FREE_MAIL.indexOf(domain) === -1\n\nlet score = (VOLUME_SCORE[volumeId] || 0) + (TIMELINE_SCORE[timelineId] || 0)\nif (businessEmail) score += 10\nif (phoneDigits.length >= 9 && contact.whatsappOptIn === true) score += 5\nif (products.some((p) => p.specs.length >= 2)) score += 5\nif (s(commercial.targetPrice, 60) || s(commercial.benchmark, 80)) score += 5\nif (score > 100) score = 100\nconst tier = score >= 65 ? 'HOT' : score >= 40 ? 'WARM' : 'NURTURE'\n\n/* Saudi desk calendar: Sunday–Thursday, 08:00–17:00, Asia/Riyadh = UTC+3 year-round. */\nconst OFFSET_MS = CONFIG.desk.utcOffsetHours * 3600000\nconst DAY_MS = 86400000\nfunction parts(date) {\n  const d = new Date(date.getTime() + OFFSET_MS)\n  return { y: d.getUTCFullYear(), m: d.getUTCMonth(), day: d.getUTCDate(), dow: d.getUTCDay(), minutes: d.getUTCHours() * 60 + d.getUTCMinutes() }\n}\nfunction at(y, m, day, hour) {\n  return new Date(Date.UTC(y, m, day, hour, 0) - OFFSET_MS)\n}\nfunction nextOpening(after) {\n  for (let i = 0; i <= 7; i++) {\n    const p = parts(new Date(after.getTime() + i * DAY_MS))\n    const opening = at(p.y, p.m, p.day, CONFIG.desk.openHour)\n    if (CONFIG.desk.workDays.indexOf(p.dow) !== -1 && opening.getTime() > after.getTime()) return opening\n  }\n  return new Date(after.getTime() + DAY_MS)\n}\nfunction addBusinessHours(start, hours) {\n  let remaining = hours * 60\n  let cursor = new Date(start)\n  for (let guard = 0; guard < 64; guard++) {\n    const p = parts(cursor)\n    if (CONFIG.desk.workDays.indexOf(p.dow) === -1 || p.minutes >= CONFIG.desk.closeHour * 60) {\n      cursor = nextOpening(cursor)\n      continue\n    }\n    if (p.minutes < CONFIG.desk.openHour * 60) {\n      cursor = at(p.y, p.m, p.day, CONFIG.desk.openHour)\n      continue\n    }\n    const available = CONFIG.desk.closeHour * 60 - p.minutes\n    if (remaining <= available) return new Date(cursor.getTime() + remaining * 60000)\n    remaining -= available\n    cursor = nextOpening(at(p.y, p.m, p.day, CONFIG.desk.closeHour))\n  }\n  return cursor\n}\nconst fmt = (date) =>\n  new Intl.DateTimeFormat('en-GB', {\n    timeZone: 'Asia/Riyadh',\n    weekday: 'short',\n    day: 'numeric',\n    month: 'short',\n    hour: '2-digit',\n    minute: '2-digit',\n  }).format(date) + ' AST'\n\nconst receivedAt = new Date()\nconst slaDue = addBusinessHours(receivedAt, CONFIG.slaBusinessHours)\n\nconst polymers = (Array.isArray(application.polymers) ? application.polymers : []).map(labelOf).filter(Boolean).join(', ')\nconst specsText = products\n  .map((p) => p.name + ': ' + (p.specs.map((r) => r.label + ' = ' + r.value).join('; ') || 'no specification given'))\n  .join(' | ')\nconst utm = source.utm && typeof source.utm === 'object'\n  ? Object.keys(source.utm).slice(0, 6).map((k) => s(k, 20) + '=' + s(source.utm[k], 60)).join('&')\n  : ''\n\nconst lead = {\n  reference,\n  submissionId,\n  familyCode,\n  route,\n  team: ROUTE_TEAM[route],\n  tier,\n  score,\n  receivedAtIso: receivedAt.toISOString(),\n  receivedAtLocal: fmt(receivedAt),\n  slaDueIso: slaDue.toISOString(),\n  slaDueLocal: fmt(slaDue),\n  contact: {\n    firstName: s(contact.firstName, 60),\n    lastName: s(contact.lastName, 60),\n    fullName: (s(contact.firstName, 60) + ' ' + s(contact.lastName, 60)).trim(),\n    email,\n    phone,\n    phoneDigits,\n    whatsapp: contact.whatsappOptIn === true,\n    company: s(contact.company, 100),\n    role: labelOf(contact.role),\n    channel: s(contact.preferredChannel, 20) || 'email',\n    language: contact.language === 'ar' ? 'ar' : 'en',\n    businessEmail,\n  },\n  products,\n  application: {\n    polymers,\n    process: labelOf(application.process),\n    market: labelOf(application.market),\n    finalProduct: s(application.finalProduct, 160),\n  },\n  commercial: {\n    annualVolume: labelOf(commercial.annualVolume),\n    annualVolumeId: volumeId,\n    firstOrder: labelOf(commercial.firstOrder),\n    timeline: labelOf(commercial.timeline),\n    timelineId,\n    sampleRequested: commercial.sampleRequested === true,\n    country: s(delivery.country, 60),\n    city: s(delivery.city, 80),\n    incoterm: s(delivery.incoterm, 40),\n    targetPrice: s(commercial.targetPrice, 60),\n    benchmark: s(commercial.benchmark, 80),\n  },\n  notes: lines(b && b.notes, 1500),\n  source: {\n    page: s(source.page, 300),\n    referrer: s(source.referrer, 300),\n    utm,\n    prefilledBy: s(source.prefilledBy, 20),\n    locale: s(source.locale, 20),\n  },\n}\n\nconst row = {\n  received_at: lead.receivedAtIso,\n  reference: lead.reference,\n  status: 'New',\n  tier: lead.tier,\n  score: lead.score,\n  route: lead.route,\n  team: lead.team,\n  sla_due_at: lead.slaDueIso,\n  company: lead.contact.company,\n  contact_name: lead.contact.fullName,\n  role: lead.contact.role,\n  email: lead.contact.email,\n  phone: lead.contact.phone,\n  whatsapp: yesNo(lead.contact.whatsapp),\n  preferred_channel: lead.contact.channel,\n  language: lead.contact.language,\n  products: products.map((p) => p.name).join(' + '),\n  product_ids: products.map((p) => p.id).join(','),\n  specs: specsText,\n  polymers: lead.application.polymers,\n  process: lead.application.process,\n  market: lead.application.market,\n  final_product: lead.application.finalProduct,\n  annual_volume: lead.commercial.annualVolume,\n  first_order: lead.commercial.firstOrder,\n  timeline: lead.commercial.timeline,\n  sample: yesNo(lead.commercial.sampleRequested),\n  delivery_country: lead.commercial.country,\n  delivery_city: lead.commercial.city,\n  incoterm: lead.commercial.incoterm,\n  target_price: lead.commercial.targetPrice,\n  benchmark: lead.commercial.benchmark,\n  notes: lead.notes,\n  source_page: lead.source.page,\n  utm: lead.source.utm,\n  prefilled_by: lead.source.prefilledBy,\n  submission_id: lead.submissionId,\n}\n\nreturn [\n  {\n    json: {\n      valid: errors.length === 0 && !spam,\n      spam,\n      // Spam gets a 200 so bots learn nothing; real validation problems get 422.\n      httpStatus: spam ? 200 : errors.length ? 422 : 200,\n      errors,\n      config: CONFIG,\n      lead,\n      row,\n    },\n  },\n]\n"
       }
     },
     {
-      "id": "c481a54c-1873-4332-b5cd-a4a69a9a5035",
+      "id": "952cf84d-1029-4a0c-8434-6f45e0f1477e",
       "name": "Payload Valid?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -70,7 +70,7 @@
       }
     },
     {
-      "id": "0e61b02c-9a9c-4e17-8bf6-0134fd3a6954",
+      "id": "fcd93946-c2fd-4b82-a01d-79f3d2de5832",
       "name": "Find Prior Submission",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
@@ -103,7 +103,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "2d35f607-7c68-4161-bec2-33158da439d4",
+      "id": "7b8a7e36-8f0f-4e57-8a9c-0837424b6664",
       "name": "Already Logged?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -136,7 +136,7 @@
       }
     },
     {
-      "id": "52363aa9-2db9-48e5-94a3-613115498b94",
+      "id": "f3dd73fd-d349-4022-aab3-e27a6afa2ac8",
       "name": "Respond · Duplicate",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
@@ -153,7 +153,7 @@
       }
     },
     {
-      "id": "e3ae4768-70f8-4be2-8b2f-04c01fe5b0cb",
+      "id": "00ce24c7-ed45-43e8-a140-c5095b5987c2",
       "name": "Write Ledger Row",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
@@ -263,7 +263,7 @@
       "waitBetweenTries": 1500
     },
     {
-      "id": "d474bcef-4111-4fbe-a20b-2dde9b725f68",
+      "id": "7c5f5794-3f1a-47f8-b786-56b9e11da8b5",
       "name": "Sheet Row",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -279,7 +279,7 @@
       }
     },
     {
-      "id": "0328dabe-217f-4de9-a029-5bc13568147b",
+      "id": "1a64bc91-68bb-435b-ab8c-ebce6c3d88a1",
       "name": "Append to Master Quote Log",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
@@ -657,7 +657,7 @@
       "onError": "continueErrorOutput"
     },
     {
-      "id": "6f36e7b0-9690-4813-8e70-ff63cc9d8d57",
+      "id": "ca963d02-7d5d-4710-8e65-302068b46aab",
       "name": "Respond · Logged",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
@@ -674,7 +674,7 @@
       }
     },
     {
-      "id": "f29b0819-909e-4d27-9762-bb04aaa6fa2b",
+      "id": "789c8571-fdef-48d3-8c3b-24b040c3a3dd",
       "name": "Alert Ops · Sheet Write Failed",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
@@ -685,7 +685,7 @@
       "parameters": {
         "resource": "message",
         "operation": "send",
-        "sendTo": "={{ $('Validate & Normalize').first().json.config.pilotRecipient }}",
+        "sendTo": "={{ $('Validate & Normalize').first().json.config.opsRecipient }}",
         "subject": "=⚠️ Quote log write failed — {{ $('Validate & Normalize').first().json.lead.reference }} (lead is safe in the ledger)",
         "emailType": "html",
         "message": "=<p>Google Sheets rejected the append for <b>{{ $('Validate & Normalize').first().json.lead.reference }}</b> ({{ $('Validate & Normalize').first().json.lead.contact.company }}).</p><p>The full lead is stored in the <code>pp_quote_ledger</code> data table and the buyer still received their confirmation. Copy the row across manually.</p><pre style=\"font:12px monospace;white-space:pre-wrap\">{{ JSON.stringify($('Validate & Normalize').first().json.row, null, 2) }}</pre>",
@@ -703,7 +703,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "d532fa35-904e-4f03-a24a-8337f2257782",
+      "id": "e3352890-baac-438a-9a46-a4d141d4883e",
       "name": "Respond · Logged (ledger)",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
@@ -720,7 +720,7 @@
       }
     },
     {
-      "id": "509b0af4-da97-419d-99b6-0c322f2948a6",
+      "id": "bffa6206-720f-45ca-ac20-c83f86ecdb7a",
       "name": "Respond · Rejected",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
@@ -737,7 +737,7 @@
       }
     },
     {
-      "id": "639c4e02-cd1f-4195-87db-d11fbb6f55dc",
+      "id": "fab5bb6e-31b4-4a9b-a182-0f7fff2db428",
       "name": "Route by Product Family",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
@@ -827,7 +827,7 @@
       }
     },
     {
-      "id": "501de922-b6cb-429a-ad57-577604426141",
+      "id": "1f00e08c-3782-471f-a12c-412417acbb3d",
       "name": "Route · Color Lab",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -876,7 +876,7 @@
       }
     },
     {
-      "id": "82f5f4bf-a666-4d63-b694-46c7f07f3be9",
+      "id": "da0dcb71-7cef-4344-a773-3d0a93491d1f",
       "name": "Route · Additives Desk",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -925,7 +925,7 @@
       }
     },
     {
-      "id": "848f4087-f80b-4c61-85fb-8ce5cfdc08eb",
+      "id": "8d13283a-dc0f-45e4-803e-2310d3bf3267",
       "name": "Route · Compounding Team",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -974,7 +974,7 @@
       }
     },
     {
-      "id": "4d4385b0-da36-4a26-8bab-6811c735b44f",
+      "id": "62176d47-3bdf-4a45-b779-4ca791defe3a",
       "name": "Route · Sales Triage",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -1023,7 +1023,7 @@
       }
     },
     {
-      "id": "d921f109-a9ff-4787-86d3-d086d63426f3",
+      "id": "ab64b08b-32be-40be-9f3a-3be01035dabb",
       "name": "Compose Sales Alert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1034,12 +1034,12 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "/**\n * Code node · \"Compose Sales Alert\" (run once for all items)\n * In : the executed route Set node (Switch branch)\n * Out: one item { to, cc, subject, html } for the internal Gmail node\n */\n\nconst BRAND = {\n  ink: '#0B0F14',\n  ink2: '#151b23',\n  paper: '#F5F7FA',\n  line: '#dfe4ea',\n  text: '#1d242e',\n  muted: '#5d6875',\n  green: '#509C35',\n  lime: '#BECC30',\n  blue: '#3249B3',\n  amber: '#E09A2D',\n  whatsapp: '#1ea952',\n}\n\nfunction esc(value) {\n  return String(value === undefined || value === null ? '' : value)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n}\n\nfunction row(label, value) {\n  if (!value) return ''\n  return (\n    '<tr>' +\n    '<td style=\"padding:6px 12px 6px 0;font:12px Arial,sans-serif;color:' + BRAND.muted + ';white-space:nowrap;vertical-align:top;\">' + esc(label) + '</td>' +\n    '<td style=\"padding:6px 0;font:13px Arial,sans-serif;color:' + BRAND.text + ';vertical-align:top;\">' + esc(value) + '</td>' +\n    '</tr>'\n  )\n}\n\nfunction table(rows) {\n  const body = rows.filter(Boolean).join('')\n  return body ? '<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">' + body + '</table>' : ''\n}\n\nfunction sectionTitle(text) {\n  return '<p style=\"margin:22px 0 8px;font:600 10px/1.4 Consolas,Menlo,monospace;letter-spacing:2px;text-transform:uppercase;color:' + BRAND.muted + ';\">' + esc(text) + '</p>'\n}\n\nfunction button(href, label, background, color) {\n  return (\n    '<a href=\"' + esc(href) + '\" style=\"display:inline-block;background:' + background + ';color:' + (color || '#ffffff') +\n    ';font:600 14px Arial,sans-serif;text-decoration:none;padding:12px 22px;border-radius:8px;\">' + esc(label) + '</a>'\n  )\n}\n\nfunction preheader(text) {\n  return '<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:' + BRAND.paper + ';\">' + esc(text) + '</div>'\n}\n\n/** 600px branded shell used by every outbound email. */\nfunction shell(options) {\n  return (\n    '<div style=\"background:' + BRAND.paper + ';padding:24px 12px;\">' +\n    preheader(options.preheader || '') +\n    '<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;margin:0 auto;background:#ffffff;border:1px solid ' + BRAND.line + ';border-radius:14px;overflow:hidden;\">' +\n    '<tr><td style=\"background:' + BRAND.ink + ';padding:18px 26px;\">' +\n    '<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>' +\n    '<td style=\"font:700 18px Arial,sans-serif;color:#ffffff;\">Pure Polymers' +\n    '<div style=\"font:italic 600 11px Arial,sans-serif;color:' + BRAND.lime + ';padding-top:3px;\">Real Passion for Quality</div></td>' +\n    '<td align=\"right\" style=\"font:600 11px Consolas,Menlo,monospace;color:' + BRAND.lime + ';letter-spacing:1px;\">' + esc(options.badge || '') + '</td>' +\n    '</tr></table></td></tr>' +\n    '<tr><td style=\"height:4px;background:linear-gradient(90deg,' + BRAND.green + ',' + BRAND.lime + ',' + BRAND.blue + ');font-size:0;line-height:0;\">&nbsp;</td></tr>' +\n    '<tr><td style=\"padding:26px;\">' + options.body + '</td></tr>' +\n    '<tr><td style=\"background:#f2f4f7;padding:16px 26px;font:12px Arial,sans-serif;color:' + BRAND.muted + ';\">' + options.footer + '</td></tr>' +\n    '</table></div>'\n  )\n}\n\nfunction waLink(phoneDigits, text) {\n  return 'https://wa.me/' + phoneDigits + (text ? '?text=' + encodeURIComponent(text) : '')\n}\n\n\nconst v = $('Validate & Normalize').first().json\nconst lead = v.lead\nconst config = v.config\n\n// Exactly one Switch branch runs per execution; find which route Set node fired.\nconst ROUTE_NODES = ['Route · Color Lab', 'Route · Additives Desk', 'Route · Compounding Team', 'Route · Sales Triage']\nlet route = null\nfor (const name of ROUTE_NODES) {\n  try {\n    if ($(name).isExecuted) {\n      route = $(name).first().json\n      break\n    }\n  } catch (error) {\n    // node not part of this execution path\n  }\n}\nif (!route) route = { route_team: lead.team, route_recipients: config.pilotRecipient, route_variant: 'triage', route_focus: '' }\n\nconst tierStyle = { HOT: { emoji: '🔥', color: '#c2410c' }, WARM: { emoji: '🟡', color: '#a16207' }, NURTURE: { emoji: '⚪', color: BRAND.muted } }[lead.tier]\nconst productNames = lead.products.map((p) => p.name).join(' + ')\n\nconst replyBody =\n  'Dear ' + lead.contact.firstName + ',%0D%0A%0D%0AThank you for your request ' + lead.reference + '.%0D%0A%0D%0A'\nconst mailto =\n  'mailto:' + lead.contact.email +\n  '?subject=' + encodeURIComponent('Pure Polymers quotation ' + lead.reference + ' — ' + productNames) +\n  '&body=' + replyBody\nconst waText =\n  'Hello ' + lead.contact.firstName + ', this is Pure Polymers (Modon 3, Jeddah) about your quote request ' +\n  lead.reference + ' for ' + productNames + '.'\n\nconst specBlocks = lead.products\n  .map(\n    (p) =>\n      '<div style=\"border:1px solid ' + BRAND.line + ';border-radius:10px;padding:12px 14px;margin-bottom:10px;\">' +\n      '<div style=\"font:600 14px Arial,sans-serif;color:' + BRAND.text + ';\">' + esc(p.name) + '</div>' +\n      table(p.specs.map((r) => row(r.label, r.value))) +\n      '</div>',\n  )\n  .join('')\n\nconst body =\n  '<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>' +\n  '<td style=\"font:700 22px Arial,sans-serif;color:' + BRAND.text + ';\">' + tierStyle.emoji + ' ' + esc(lead.tier) +\n  ' lead · <span style=\"font-family:Consolas,Menlo,monospace;\">' + esc(lead.reference) + '</span></td>' +\n  '<td align=\"right\" style=\"font:600 12px Arial,sans-serif;color:' + tierStyle.color + ';\">score ' + lead.score + '/100</td>' +\n  '</tr></table>' +\n  '<p style=\"margin:6px 0 0;font:13px Arial,sans-serif;color:' + BRAND.muted + ';\">' +\n  esc(route.route_team) + ' · received ' + esc(lead.receivedAtLocal) +\n  ' · <strong style=\"color:' + BRAND.text + ';\">quotation due ' + esc(lead.slaDueLocal) + '</strong></p>' +\n  (route.route_focus\n    ? '<p style=\"margin:14px 0 0;padding:10px 12px;background:#f2f7ef;border-left:3px solid ' + BRAND.green +\n      ';font:13px Arial,sans-serif;color:' + BRAND.text + ';\">' + esc(route.route_focus) + '</p>'\n    : '') +\n  sectionTitle('Buyer') +\n  table([\n    row('Company', lead.contact.company),\n    row('Contact', lead.contact.fullName + (lead.contact.role ? ' · ' + lead.contact.role : '')),\n    row('Email', lead.contact.email),\n    row('Phone', lead.contact.phone + (lead.contact.whatsapp ? ' (WhatsApp)' : '')),\n    row('Prefers', lead.contact.channel + ' · replies in ' + (lead.contact.language === 'ar' ? 'Arabic' : 'English')),\n    row('Email type', lead.contact.businessEmail ? 'Company domain' : 'Free mailbox'),\n  ]) +\n  sectionTitle('Technical request') +\n  specBlocks +\n  table([\n    row('Base polymer', lead.application.polymers),\n    row('Process', lead.application.process),\n    row('End market', lead.application.market),\n    row('Final product', lead.application.finalProduct),\n  ]) +\n  sectionTitle('Commercial') +\n  table([\n    row('Annual volume', lead.commercial.annualVolume),\n    row('First order', lead.commercial.firstOrder),\n    row('Timeline', lead.commercial.timeline),\n    row('Lab sample first', lead.commercial.sampleRequested ? 'Yes — ships within 7 business days' : 'No'),\n    row('Delivery', [lead.commercial.city, lead.commercial.country].filter(Boolean).join(', ')),\n    row('Incoterm', lead.commercial.incoterm),\n    row('Target price', lead.commercial.targetPrice),\n    row('Grade used today', lead.commercial.benchmark),\n  ]) +\n  (lead.notes\n    ? sectionTitle('Notes from the buyer') +\n      '<p style=\"margin:0;font:13px/1.6 Arial,sans-serif;color:' + BRAND.text + ';white-space:pre-line;\">' + esc(lead.notes) + '</p>'\n    : '') +\n  '<div style=\"margin:24px 0 6px;\">' +\n  button(mailto, 'Reply by email', BRAND.green) + '&nbsp;&nbsp;' +\n  (lead.contact.phoneDigits ? button(waLink(lead.contact.phoneDigits, waText), 'WhatsApp the buyer', BRAND.whatsapp) + '&nbsp;&nbsp;' : '') +\n  button(config.quoteLogUrl, 'Open quote log', BRAND.ink) +\n  '</div>' +\n  sectionTitle('Source') +\n  table([\n    row('Page', lead.source.page),\n    row('Campaign', lead.source.utm),\n    row('Prefilled by', lead.source.prefilledBy === 'assistant' ? 'AI assistant conversation' : ''),\n    row('Submission id', lead.submissionId),\n  ])\n\nconst html = shell({\n  badge: 'NEW QUOTE REQUEST',\n  preheader: lead.tier + ' · ' + productNames + ' · ' + (lead.commercial.annualVolume || 'volume not given') + ' · ' + lead.contact.company,\n  body,\n  footer: 'Automated by the Pure Polymers quote pipeline · reply directly to the buyer, then set the row status in the quote log.',\n})\n\nreturn [\n  {\n    json: {\n      to: config.mode === 'live' ? route.route_recipients : config.pilotRecipient,\n      cc: config.mode === 'live' ? route.route_cc || '' : '',\n      subject:\n        tierStyle.emoji + ' ' + lead.tier + ' · ' + lead.reference + ' · ' + productNames + ' · ' +\n        (lead.commercial.annualVolume || 'volume TBC') + ' · ' + lead.contact.company,\n      html,\n      tier: lead.tier,\n      reference: lead.reference,\n      pingText:\n        lead.tier + ' quote request ' + lead.reference + ': ' + productNames + ' for ' + lead.contact.company +\n        ' (' + (lead.commercial.annualVolume || 'volume TBC') + '). Quotation due ' + lead.slaDueLocal + '.',\n    },\n  },\n]\n"
+        "jsCode": "/**\n * Code node · \"Compose Sales Alert\" (run once for all items)\n * In : the executed route Set node (Switch branch)\n * Out: one item { to, cc, subject, html } for the internal Gmail node\n */\n\nconst BRAND = {\n  ink: '#0B0F14',\n  ink2: '#151b23',\n  paper: '#F5F7FA',\n  line: '#dfe4ea',\n  text: '#1d242e',\n  muted: '#5d6875',\n  green: '#509C35',\n  lime: '#BECC30',\n  blue: '#3249B3',\n  amber: '#E09A2D',\n  whatsapp: '#1ea952',\n}\n\nfunction esc(value) {\n  return String(value === undefined || value === null ? '' : value)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n}\n\nfunction row(label, value) {\n  if (!value) return ''\n  return (\n    '<tr>' +\n    '<td style=\"padding:6px 12px 6px 0;font:12px Arial,sans-serif;color:' + BRAND.muted + ';white-space:nowrap;vertical-align:top;\">' + esc(label) + '</td>' +\n    '<td style=\"padding:6px 0;font:13px Arial,sans-serif;color:' + BRAND.text + ';vertical-align:top;\">' + esc(value) + '</td>' +\n    '</tr>'\n  )\n}\n\nfunction table(rows) {\n  const body = rows.filter(Boolean).join('')\n  return body ? '<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">' + body + '</table>' : ''\n}\n\nfunction sectionTitle(text) {\n  return '<p style=\"margin:22px 0 8px;font:600 10px/1.4 Consolas,Menlo,monospace;letter-spacing:2px;text-transform:uppercase;color:' + BRAND.muted + ';\">' + esc(text) + '</p>'\n}\n\nfunction button(href, label, background, color) {\n  return (\n    '<a href=\"' + esc(href) + '\" style=\"display:inline-block;background:' + background + ';color:' + (color || '#ffffff') +\n    ';font:600 14px Arial,sans-serif;text-decoration:none;padding:12px 22px;border-radius:8px;\">' + esc(label) + '</a>'\n  )\n}\n\nfunction preheader(text) {\n  return '<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:' + BRAND.paper + ';\">' + esc(text) + '</div>'\n}\n\n/** 600px branded shell used by every outbound email. */\nfunction shell(options) {\n  return (\n    '<div style=\"background:' + BRAND.paper + ';padding:24px 12px;\">' +\n    preheader(options.preheader || '') +\n    '<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;margin:0 auto;background:#ffffff;border:1px solid ' + BRAND.line + ';border-radius:14px;overflow:hidden;\">' +\n    '<tr><td style=\"background:' + BRAND.ink + ';padding:18px 26px;\">' +\n    '<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>' +\n    '<td style=\"font:700 18px Arial,sans-serif;color:#ffffff;\">Pure Polymers' +\n    '<div style=\"font:italic 600 11px Arial,sans-serif;color:' + BRAND.lime + ';padding-top:3px;\">Real Passion for Quality</div></td>' +\n    '<td align=\"right\" style=\"font:600 11px Consolas,Menlo,monospace;color:' + BRAND.lime + ';letter-spacing:1px;\">' + esc(options.badge || '') + '</td>' +\n    '</tr></table></td></tr>' +\n    '<tr><td style=\"height:4px;background:linear-gradient(90deg,' + BRAND.green + ',' + BRAND.lime + ',' + BRAND.blue + ');font-size:0;line-height:0;\">&nbsp;</td></tr>' +\n    '<tr><td style=\"padding:26px;\">' + options.body + '</td></tr>' +\n    '<tr><td style=\"background:#f2f4f7;padding:16px 26px;font:12px Arial,sans-serif;color:' + BRAND.muted + ';\">' + options.footer + '</td></tr>' +\n    '</table></div>'\n  )\n}\n\nfunction waLink(phoneDigits, text) {\n  return 'https://wa.me/' + phoneDigits + (text ? '?text=' + encodeURIComponent(text) : '')\n}\n\n\nconst v = $('Validate & Normalize').first().json\nconst lead = v.lead\nconst config = v.config\n\n// Exactly one Switch branch runs per execution; find which route Set node fired.\nconst ROUTE_NODES = ['Route · Color Lab', 'Route · Additives Desk', 'Route · Compounding Team', 'Route · Sales Triage']\nlet route = null\nfor (const name of ROUTE_NODES) {\n  try {\n    if ($(name).isExecuted) {\n      route = $(name).first().json\n      break\n    }\n  } catch (error) {\n    // node not part of this execution path\n  }\n}\nif (!route) route = { route_team: lead.team, route_recipients: config.opsRecipient, route_variant: 'triage', route_focus: '' }\n\nconst tierStyle = { HOT: { emoji: '🔥', color: '#c2410c' }, WARM: { emoji: '🟡', color: '#a16207' }, NURTURE: { emoji: '⚪', color: BRAND.muted } }[lead.tier]\nconst productNames = lead.products.map((p) => p.name).join(' + ')\n\nconst replyBody =\n  'Dear ' + lead.contact.firstName + ',%0D%0A%0D%0AThank you for your request ' + lead.reference + '.%0D%0A%0D%0A'\nconst mailto =\n  'mailto:' + lead.contact.email +\n  '?subject=' + encodeURIComponent('Pure Polymers quotation ' + lead.reference + ' — ' + productNames) +\n  '&body=' + replyBody\nconst waText =\n  'Hello ' + lead.contact.firstName + ', this is Pure Polymers (Modon 3, Jeddah) about your quote request ' +\n  lead.reference + ' for ' + productNames + '.'\n\nconst specBlocks = lead.products\n  .map(\n    (p) =>\n      '<div style=\"border:1px solid ' + BRAND.line + ';border-radius:10px;padding:12px 14px;margin-bottom:10px;\">' +\n      '<div style=\"font:600 14px Arial,sans-serif;color:' + BRAND.text + ';\">' + esc(p.name) + '</div>' +\n      table(p.specs.map((r) => row(r.label, r.value))) +\n      '</div>',\n  )\n  .join('')\n\nconst body =\n  '<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>' +\n  '<td style=\"font:700 22px Arial,sans-serif;color:' + BRAND.text + ';\">' + tierStyle.emoji + ' ' + esc(lead.tier) +\n  ' lead · <span style=\"font-family:Consolas,Menlo,monospace;\">' + esc(lead.reference) + '</span></td>' +\n  '<td align=\"right\" style=\"font:600 12px Arial,sans-serif;color:' + tierStyle.color + ';\">score ' + lead.score + '/100</td>' +\n  '</tr></table>' +\n  '<p style=\"margin:6px 0 0;font:13px Arial,sans-serif;color:' + BRAND.muted + ';\">' +\n  esc(route.route_team) + ' · received ' + esc(lead.receivedAtLocal) +\n  ' · <strong style=\"color:' + BRAND.text + ';\">quotation due ' + esc(lead.slaDueLocal) + '</strong></p>' +\n  (route.route_focus\n    ? '<p style=\"margin:14px 0 0;padding:10px 12px;background:#f2f7ef;border-left:3px solid ' + BRAND.green +\n      ';font:13px Arial,sans-serif;color:' + BRAND.text + ';\">' + esc(route.route_focus) + '</p>'\n    : '') +\n  sectionTitle('Buyer') +\n  table([\n    row('Company', lead.contact.company),\n    row('Contact', lead.contact.fullName + (lead.contact.role ? ' · ' + lead.contact.role : '')),\n    row('Email', lead.contact.email),\n    row('Phone', lead.contact.phone + (lead.contact.whatsapp ? ' (WhatsApp)' : '')),\n    row('Prefers', lead.contact.channel + ' · replies in ' + (lead.contact.language === 'ar' ? 'Arabic' : 'English')),\n    row('Email type', lead.contact.businessEmail ? 'Company domain' : 'Free mailbox'),\n  ]) +\n  sectionTitle('Technical request') +\n  specBlocks +\n  table([\n    row('Base polymer', lead.application.polymers),\n    row('Process', lead.application.process),\n    row('End market', lead.application.market),\n    row('Final product', lead.application.finalProduct),\n  ]) +\n  sectionTitle('Commercial') +\n  table([\n    row('Annual volume', lead.commercial.annualVolume),\n    row('First order', lead.commercial.firstOrder),\n    row('Timeline', lead.commercial.timeline),\n    row('Lab sample first', lead.commercial.sampleRequested ? 'Yes — ships within 7 business days' : 'No'),\n    row('Delivery', [lead.commercial.city, lead.commercial.country].filter(Boolean).join(', ')),\n    row('Incoterm', lead.commercial.incoterm),\n    row('Target price', lead.commercial.targetPrice),\n    row('Grade used today', lead.commercial.benchmark),\n  ]) +\n  (lead.notes\n    ? sectionTitle('Notes from the buyer') +\n      '<p style=\"margin:0;font:13px/1.6 Arial,sans-serif;color:' + BRAND.text + ';white-space:pre-line;\">' + esc(lead.notes) + '</p>'\n    : '') +\n  '<div style=\"margin:24px 0 6px;\">' +\n  button(mailto, 'Reply by email', BRAND.green) + '&nbsp;&nbsp;' +\n  (lead.contact.phoneDigits ? button(waLink(lead.contact.phoneDigits, waText), 'WhatsApp the buyer', BRAND.whatsapp) + '&nbsp;&nbsp;' : '') +\n  button(config.quoteLogUrl, 'Open quote log', BRAND.ink) +\n  '</div>' +\n  sectionTitle('Source') +\n  table([\n    row('Page', lead.source.page),\n    row('Campaign', lead.source.utm),\n    row('Prefilled by', lead.source.prefilledBy === 'assistant' ? 'AI assistant conversation' : ''),\n    row('Submission id', lead.submissionId),\n  ])\n\nconst html = shell({\n  badge: 'NEW QUOTE REQUEST',\n  preheader: lead.tier + ' · ' + productNames + ' · ' + (lead.commercial.annualVolume || 'volume not given') + ' · ' + lead.contact.company,\n  body,\n  footer: 'Automated by the Pure Polymers quote pipeline · reply directly to the buyer, then set the row status in the quote log.',\n})\n\nreturn [\n  {\n    json: {\n      to: config.mode === 'live' ? route.route_recipients : config.demoRecipient,\n      cc: config.mode === 'live' ? route.route_cc || '' : '',\n      // Demo mode bcc's us so we see the alert Fahad sees without appearing on his copy.\n      bcc: config.mode === 'live' ? '' : config.demoBcc || '',\n      subject:\n        tierStyle.emoji + ' ' + lead.tier + ' · ' + lead.reference + ' · ' + productNames + ' · ' +\n        (lead.commercial.annualVolume || 'volume TBC') + ' · ' + lead.contact.company,\n      html,\n      tier: lead.tier,\n      reference: lead.reference,\n      pingText:\n        lead.tier + ' quote request ' + lead.reference + ': ' + productNames + ' for ' + lead.contact.company +\n        ' (' + (lead.commercial.annualVolume || 'volume TBC') + '). Quotation due ' + lead.slaDueLocal + '.',\n    },\n  },\n]\n"
       },
       "executeOnce": true
     },
     {
-      "id": "2f1b3d97-aba2-4c63-af40-2825796763e9",
+      "id": "64a60a8a-1c40-43b3-b9e1-cfd31caad18f",
       "name": "Read TDS Library",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
@@ -1076,7 +1076,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "d2f2b57a-7f13-4e60-93e4-ea2da1cf06ba",
+      "id": "c483b8a7-b7ac-44c1-aba8-6a86cd59e59e",
       "name": "Send Sales Alert",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
@@ -1094,7 +1094,8 @@
         "options": {
           "appendAttribution": false,
           "senderName": "Pure Polymers Quote Pipeline",
-          "ccList": "={{ $json.cc }}"
+          "ccList": "={{ $json.cc }}",
+          "bccList": "={{ $json.bcc }}"
         }
       },
       "credentials": {
@@ -1106,7 +1107,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "0c57177c-f9e3-4d75-8486-784900640eaf",
+      "id": "ea30dc07-55dd-4c3a-b316-dbf9b4a9f656",
       "name": "Hot Lead?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -1137,7 +1138,7 @@
       }
     },
     {
-      "id": "a820c6b6-8e12-4e93-a2ab-c5f24001210c",
+      "id": "958509af-99fd-437c-8ca0-d67742467541",
       "name": "WhatsApp Ping · Hot Lead",
       "type": "n8n-nodes-base.whatsApp",
       "typeVersion": 1.1,
@@ -1176,7 +1177,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "0c8dc32c-d318-446e-8443-2661c7980315",
+      "id": "6b5c0ca3-823a-429a-92e4-fa1b6e7ea5c8",
       "name": "Resolve TDS Files",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1191,7 +1192,7 @@
       }
     },
     {
-      "id": "ecf443cc-fb52-404e-b980-c408e3075be2",
+      "id": "f4bf4f57-9d59-4583-85fb-a187f1b251e1",
       "name": "Has TDS on File?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -1223,7 +1224,7 @@
       }
     },
     {
-      "id": "83e660c1-4293-4e2b-bbdc-7aad413381b6",
+      "id": "002f0600-988d-40e8-ac07-dd7ff6d56a62",
       "name": "Split TDS Files",
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
@@ -1238,7 +1239,7 @@
       }
     },
     {
-      "id": "8a290f50-efdd-49cd-ab58-dadeee720558",
+      "id": "228224c5-22eb-4346-96d5-b21acdff2808",
       "name": "Download TDS",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1270,7 +1271,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "82297114-db07-4550-9221-79dc9b02c4bd",
+      "id": "6e74a1a2-f088-4c66-8b3b-e4aca93c19ad",
       "name": "Bundle TDS & Compose Buyer Email",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1285,7 +1286,7 @@
       }
     },
     {
-      "id": "2e2db2f5-edaa-469a-8460-7c9932ce5d07",
+      "id": "8249376e-08aa-400d-a533-cb487200a403",
       "name": "Attachments Ready?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -1317,7 +1318,7 @@
       }
     },
     {
-      "id": "ed876097-73e2-4399-8adb-48d524110310",
+      "id": "15e1c25b-e6d9-4951-adaa-3049979d0ecd",
       "name": "Send Buyer Confirmation + TDS",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
@@ -1356,7 +1357,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "1e87998a-dc47-409b-8c8c-39217d7707b0",
+      "id": "39783b58-1058-4c42-a2c3-ff9dd74e0e65",
       "name": "Send Buyer Confirmation",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
@@ -1388,8 +1389,8 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "fc582a0c-5ef0-4171-8f0d-420da0ecb6e1",
-      "name": "Sticky Note fc582a0c",
+      "id": "972f51aa-4455-4382-b76f-186e5d749df3",
+      "name": "Sticky Note 972f51aa",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1404,8 +1405,8 @@
       }
     },
     {
-      "id": "014c3efc-fd28-45df-bcec-207922a87e48",
-      "name": "Sticky Note 014c3efc",
+      "id": "7ce2d018-5c84-43b7-910b-3af28e3e9df1",
+      "name": "Sticky Note 7ce2d018",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [

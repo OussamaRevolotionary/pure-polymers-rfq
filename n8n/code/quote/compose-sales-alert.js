@@ -23,7 +23,7 @@ for (const name of ROUTE_NODES) {
     // node not part of this execution path
   }
 }
-if (!route) route = { route_team: lead.team, route_recipients: config.pilotRecipient, route_variant: 'triage', route_focus: '' }
+if (!route) route = { route_team: lead.team, route_recipients: config.opsRecipient, route_variant: 'triage', route_focus: '' }
 
 const tierStyle = { HOT: { emoji: '🔥', color: '#c2410c' }, WARM: { emoji: '🟡', color: '#a16207' }, NURTURE: { emoji: '⚪', color: BRAND.muted } }[lead.tier]
 const productNames = lead.products.map((p) => p.name).join(' + ')
@@ -116,8 +116,10 @@ const html = shell({
 return [
   {
     json: {
-      to: config.mode === 'live' ? route.route_recipients : config.pilotRecipient,
+      to: config.mode === 'live' ? route.route_recipients : config.demoRecipient,
       cc: config.mode === 'live' ? route.route_cc || '' : '',
+      // Demo mode bcc's us so we see the alert Fahad sees without appearing on his copy.
+      bcc: config.mode === 'live' ? '' : config.demoBcc || '',
       subject:
         tierStyle.emoji + ' ' + lead.tier + ' · ' + lead.reference + ' · ' + productNames + ' · ' +
         (lead.commercial.annualVolume || 'volume TBC') + ' · ' + lead.contact.company,

@@ -277,7 +277,7 @@ const alertOps = node({
     parameters: {
       resource: 'message',
       operation: 'send',
-      sendTo: expr("{{ $('Validate & Normalize').first().json.config.pilotRecipient }}"),
+      sendTo: expr("{{ $('Validate & Normalize').first().json.config.opsRecipient }}"),
       subject: expr("=⚠️ Quote log write failed — {{ $('Validate & Normalize').first().json.lead.reference }} (lead is safe in the ledger)"),
       emailType: 'html',
       message: expr("=<p>Google Sheets rejected the append for <b>{{ $('Validate & Normalize').first().json.lead.reference }}</b> ({{ $('Validate & Normalize').first().json.lead.contact.company }}).</p><p>The full lead is stored in the <code>pp_quote_ledger</code> data table and the buyer still received their confirmation. Copy the row across manually.</p><pre style=\\"font:12px monospace;white-space:pre-wrap\\">{{ JSON.stringify($('Validate & Normalize').first().json.row, null, 2) }}</pre>"),
@@ -402,7 +402,7 @@ const composeAlert = node({
     executeOnce: true,
     parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: ${js(loadCode('quote/compose-sales-alert.js'))} }
   },
-  output: [{ to: 'sales@purepolymers.net', cc: 'info@purepolymers.net', subject: '🔥 HOT · PP-8942-AM', html: '<div>…</div>', tier: 'HOT', reference: 'PP-8942-AM', pingText: 'HOT quote request PP-8942-AM' }]
+  output: [{ to: 'sales@purepolymers.net', cc: 'info@purepolymers.net', bcc: '', subject: '🔥 HOT · PP-8942-AM', html: '<div>…</div>', tier: 'HOT', reference: 'PP-8942-AM', pingText: 'HOT quote request PP-8942-AM' }]
 });
 
 const sendAlert = node({
@@ -420,7 +420,7 @@ const sendAlert = node({
       subject: expr('{{ $json.subject }}'),
       emailType: 'html',
       message: expr('{{ $json.html }}'),
-      options: { appendAttribution: false, senderName: 'Pure Polymers Quote Pipeline', ccList: expr('{{ $json.cc }}') }
+      options: { appendAttribution: false, senderName: 'Pure Polymers Quote Pipeline', ccList: expr('{{ $json.cc }}'), bccList: expr('{{ $json.bcc }}') }
     }
   },
   output: [{ id: 'gmail-id' }]

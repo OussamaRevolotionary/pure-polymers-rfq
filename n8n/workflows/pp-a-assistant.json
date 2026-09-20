@@ -3,7 +3,7 @@
   "name": "Pure Polymers — A — AI Assistant",
   "nodes": [
     {
-      "id": "e0f7c7d5-02b1-4d64-8c89-f72ef8003083",
+      "id": "70e6a3a4-1d24-4fda-8afc-b33f7df73e67",
       "name": "Assistant Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
@@ -20,10 +20,10 @@
           "ignoreBots": true
         }
       },
-      "webhookId": "84cdf300-1515-4c06-9ee4-41da1b673b88"
+      "webhookId": "ad86073c-2118-4df1-9a28-7c1f224b2435"
     },
     {
-      "id": "bdf6d8f0-64aa-44d3-8c7f-dd20fe68b42c",
+      "id": "35b84ec5-16e5-4228-aa48-78dd4a4c28af",
       "name": "Guard & Build Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -38,7 +38,7 @@
       }
     },
     {
-      "id": "c6cc57cf-dfbe-4698-a478-8a897ce6d28d",
+      "id": "fcaa9247-e046-4228-9119-0a0915da71e3",
       "name": "Blocked?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -70,7 +70,7 @@
       }
     },
     {
-      "id": "e37360a2-e072-4071-8563-b94f67bcd6c1",
+      "id": "2a542581-e43f-4bc8-8cd3-e3713cd99920",
       "name": "Respond to Browser",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
@@ -87,7 +87,7 @@
       }
     },
     {
-      "id": "6334c36d-28ce-4933-9e41-cecb08dfe372",
+      "id": "8963c8e4-6abc-4acc-b3ca-5e0f195c5e06",
       "name": "Call OpenAI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
@@ -122,7 +122,7 @@
       }
     },
     {
-      "id": "d2403c53-4794-4bf9-af88-05541bd64038",
+      "id": "38d76201-5871-495b-a740-3c332bd08097",
       "name": "Shape Reply",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -137,7 +137,7 @@
       }
     },
     {
-      "id": "7cef4d9f-d9a0-492c-a7a0-bf92ba96399f",
+      "id": "11080067-7a63-4950-935a-321103adfcac",
       "name": "Retry Needed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -169,7 +169,7 @@
       }
     },
     {
-      "id": "3680d9dd-ac1b-40ca-a5b7-799fcb9549ff",
+      "id": "723d6719-f4cd-4c4f-b9a4-54cd8c17cfef",
       "name": "Back Off 2s",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -184,7 +184,7 @@
       }
     },
     {
-      "id": "2aef78d4-ed1f-41e1-80ea-0d7083a61a10",
+      "id": "1ad02341-7001-427e-8d7d-a9adf9d1cfcf",
       "name": "Call OpenAI (retry)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
@@ -219,7 +219,7 @@
       }
     },
     {
-      "id": "bb93959b-73d7-4a4d-9bae-6aa57044d75c",
+      "id": "0d6f0187-bfcb-48a3-9706-000a3bd7053a",
       "name": "Shape Reply (final)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -234,7 +234,7 @@
       }
     },
     {
-      "id": "c0ffe9f1-8892-4bc5-acde-6eccbad6b2bc",
+      "id": "a76a6af0-0c59-4f1e-9f22-dafe10a47373",
       "name": "Written Answer Missing?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -267,7 +267,7 @@
       }
     },
     {
-      "id": "5e8a91ac-86d0-4345-9c61-f2872a5dfd3a",
+      "id": "6d398a97-a531-4913-a2a0-db68876e6287",
       "name": "Call OpenAI (written answer)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
@@ -303,7 +303,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "19f70033-e1cb-44ec-bdf6-8068f3ee542f",
+      "id": "c99b09fe-7ef9-4c6a-ab83-0bf5bf6d3daf",
       "name": "Attach Written Answer",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -318,7 +318,7 @@
       }
     },
     {
-      "id": "af6a27a2-4040-48da-9d8e-af6551c5d97e",
+      "id": "1a507d48-59c1-4170-ba34-9f6951013bd9",
       "name": "Conversion Event?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -351,7 +351,7 @@
       }
     },
     {
-      "id": "40f4f754-6613-46b3-ac75-4bd57b73a3a4",
+      "id": "93bf4cae-8d81-4fe4-aded-9dffb0984429",
       "name": "Log Assistant Event",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
@@ -501,8 +501,8 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "47abe106-4105-476e-a0cd-a8e63bce32ea",
-      "name": "Sticky Note 47abe106",
+      "id": "822c6915-4570-4700-9eaf-1466a6d3066b",
+      "name": "Sticky Note 822c6915",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [

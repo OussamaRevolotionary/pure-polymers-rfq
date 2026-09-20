@@ -8,10 +8,17 @@
  */
 
 const CONFIG = {
-  // 'pilot' → every INTERNAL email goes to pilotRecipient (buyer emails always go to the buyer).
-  // Switch to 'live' once Pure Polymers signs off on the routing addresses.
+  // 'pilot' → the internal "new quote" alert goes to demoRecipient instead of the real
+  // desk addresses. Switch to 'live' once Pure Polymers signs off on the routing.
+  // Buyer confirmations always go to the buyer, in either mode.
   mode: 'pilot',
-  pilotRecipient: 'oussama.g@oussamalabs.com',
+  // While this is a demo, Fahad receives the sales alert himself, seconds after a
+  // submission, so he feels what his desk would feel rather than being told about it.
+  // OussamaLabs is bcc'd to know when he tries it, without cluttering his copy.
+  demoRecipient: 'fahad@purepolymers.net',
+  demoBcc: 'oussama.g@oussamalabs.com',
+  // Infrastructure failures are ours, not the client's: these never reach demoRecipient.
+  opsRecipient: 'oussama.g@oussamalabs.com',
   replyTo: 'info@purepolymers.net',
   whatsappE164: '966546460891',
   visualizerUrl: 'https://colorsvisualizer.com/',

@@ -1,0 +1,13 @@
+{
+  "name": "pure-polymers-n8n",
+  "private": true,
+  "type": "module",
+  "description": "Build tooling for the Pure Polymers n8n workflows: Code-node sources -> validated SDK code -> importable workflow JSON + email previews.",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test/run-code-nodes.mjs"
+  },
+  "devDependencies": {
+    "@n8n/workflow-sdk": "0.32.2"
+  }
+}

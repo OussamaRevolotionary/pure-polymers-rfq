@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env.local
+.env.*.local
+*.log
+.DS_Store
+
+# Private client material — email thread with Pure Polymers, crawler dumps.
+# This repo is published to GitHub Pages, so correspondence stays local.
+Inputs/
+
+# Generated email previews written by the Code-node test run
+n8n/previews/

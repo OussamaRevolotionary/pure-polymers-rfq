@@ -1,0 +1,1791 @@
+{
+  "id": "pp-b-quote-intake",
+  "name": "Pure Polymers — B — Quote Intake",
+  "nodes": [
+    {
+      "id": "3835580c-a9d0-4a53-bdd2-891d67233359",
+      "name": "Quote Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1120,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pure-polymers/quote",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://purepolymers.net,https://www.purepolymers.net,https://oussamarevolotionary.github.io,http://localhost:8787",
+          "ignoreBots": true
+        }
+      },
+      "webhookId": "ae60ecd8-9bd2-45e9-8c6d-d54ad92c8607"
+    },
+    {
+      "id": "ad4fc982-a410-4494-ac53-43923e10caa7",
+      "name": "Validate & Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "/**\n * Code node · \"Validate & Normalize\" (run once for all items)\n * In : Webhook item — body is a pp.quote.v1 payload from the quote configurator\n * Out: one item { valid, spam, httpStatus, errors[], config, lead{}, row{} }\n *\n * Nothing downstream re-reads the raw webhook body: this node is the only place\n * that trusts client input, and every field is length-capped and type-checked.\n */\n\nconst CONFIG = {\n  // 'pilot' → every INTERNAL email goes to pilotRecipient (buyer emails always go to the buyer).\n  // Switch to 'live' once Pure Polymers signs off on the routing addresses.\n  mode: 'pilot',\n  pilotRecipient: 'oussama.g@oussamalabs.com',\n  replyTo: 'info@purepolymers.net',\n  whatsappE164: '966546460891',\n  visualizerUrl: 'https://colorsvisualizer.com/',\n  quoteLogUrl: 'https://docs.google.com/spreadsheets/d/1DUd4fQiYWlL86c7_Io0GjQ2oM6u8vcK99Bkw9xXs3ks/edit',\n  slaBusinessHours: 18, // 2 business days on a 9 h desk\n  desk: { utcOffsetHours: 3, workDays: [0, 1, 2, 3, 4], openHour: 8, closeHour: 17 },\n}\n\nconst ROUTE_TEAM = {\n  color_pigment: 'Color Lab',\n  additive: 'Additives Technical Desk',\n  compound: 'Compounding Team',\n  unclassified: 'Sales Desk (triage)',\n}\nconst FAMILY_ROUTE = { CM: 'color_pigment', WM: 'color_pigment', BM: 'color_pigment', AM: 'additive', PC: 'compound' }\nconst VOLUME_SCORE = { lt5: 5, '5-25': 15, '25-100': 30, '100-500': 40, gt500: 45, unknown: 8 }\nconst TIMELINE_SCORE = { urgent: 25, month: 18, quarter: 10, planning: 4 }\nconst FREE_MAIL = ['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'icloud.com', 'live.com']\nconst EMAIL_RE = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/\n\nconst first = $input.first().json\nconst b = first && typeof first.body === 'object' && first.body !== null ? first.body : first\nconst errors = []\n\nconst s = (value, max) => String(value === undefined || value === null ? '' : value).replace(/[\\t\\r\\n]+/g, ' ').trim().slice(0, max || 300)\nconst lines = (value, max) => String(value === undefined || value === null ? '' : value).replace(/\\r/g, '').trim().slice(0, max || 1500)\nconst labelOf = (option) => (option && typeof option === 'object' ? s(option.label, 80) : '')\nconst yesNo = (value) => (value ? 'Yes' : 'No')\n\nif (s(b && b.schema, 20) !== 'pp.quote.v1') errors.push('unsupported schema')\n\nconst submissionId = s(b && b.submissionId, 64)\nif (!/^[0-9a-fA-F-]{16,64}$/.test(submissionId)) errors.push('submissionId missing or malformed')\n\nconst reference = s(b && b.reference, 20).toUpperCase()\nif (!/^PP-\\d{4}-[A-Z]{2}$/.test(reference)) errors.push('reference malformed')\n\nconst familyCode = s(b && b.family && b.family.code, 2).toUpperCase()\nconst route = FAMILY_ROUTE[familyCode] || 'unclassified'\n\nconst products = (Array.isArray(b && b.products) ? b.products : [])\n  .slice(0, 5)\n  .map((p) => ({\n    id: s(p && p.id, 40),\n    name: s(p && p.name, 80),\n    family: s(p && p.family, 20),\n    tds: s(p && p.tds, 40),\n    specs: (Array.isArray(p && p.specsReadable) ? p.specsReadable : [])\n      .slice(0, 14)\n      .map((r) => ({ label: s(r && r.label, 80), value: s(r && r.value, 200) }))\n      .filter((r) => r.label && r.value),\n  }))\n  .filter((p) => p.id && p.name)\nif (!products.length) errors.push('at least one product is required')\n\nconst contact = (b && b.contact) || {}\nconst email = s(contact.email, 160).toLowerCase()\nif (!EMAIL_RE.test(email)) errors.push('valid email is required')\nif (!s(contact.firstName, 60)) errors.push('first name is required')\nif (!s(contact.company, 100)) errors.push('company is required')\nif (!(b && b.consent && b.consent.contact === true)) errors.push('contact consent is required')\n\n// Honeypot: real buyers never see this field.\nconst spam = s(b && b.hp, 200) !== ''\n\nconst application = (b && b.application) || {}\nconst commercial = (b && b.commercial) || {}\nconst delivery = commercial.delivery || {}\nconst source = (b && b.source) || {}\n\nconst volumeId = s(commercial.annualVolume && commercial.annualVolume.id, 20)\nconst timelineId = s(commercial.timeline && commercial.timeline.id, 20)\nconst phone = s(contact.phone, 40)\nconst phoneDigits = phone.replace(/\\D/g, '')\nconst domain = email.split('@')[1] || ''\nconst businessEmail = Boolean(domain) && FREE_MAIL.indexOf(domain) === -1\n\nlet score = (VOLUME_SCORE[volumeId] || 0) + (TIMELINE_SCORE[timelineId] || 0)\nif (businessEmail) score += 10\nif (phoneDigits.length >= 9 && contact.whatsappOptIn === true) score += 5\nif (products.some((p) => p.specs.length >= 2)) score += 5\nif (s(commercial.targetPrice, 60) || s(commercial.benchmark, 80)) score += 5\nif (score > 100) score = 100\nconst tier = score >= 65 ? 'HOT' : score >= 40 ? 'WARM' : 'NURTURE'\n\n/* Saudi desk calendar: Sunday–Thursday, 08:00–17:00, Asia/Riyadh = UTC+3 year-round. */\nconst OFFSET_MS = CONFIG.desk.utcOffsetHours * 3600000\nconst DAY_MS = 86400000\nfunction parts(date) {\n  const d = new Date(date.getTime() + OFFSET_MS)\n  return { y: d.getUTCFullYear(), m: d.getUTCMonth(), day: d.getUTCDate(), dow: d.getUTCDay(), minutes: d.getUTCHours() * 60 + d.getUTCMinutes() }\n}\nfunction at(y, m, day, hour) {\n  return new Date(Date.UTC(y, m, day, hour, 0) - OFFSET_MS)\n}\nfunction nextOpening(after) {\n  for (let i = 0; i <= 7; i++) {\n    const p = parts(new Date(after.getTime() + i * DAY_MS))\n    const opening = at(p.y, p.m, p.day, CONFIG.desk.openHour)\n    if (CONFIG.desk.workDays.indexOf(p.dow) !== -1 && opening.getTime() > after.getTime()) return opening\n  }\n  return new Date(after.getTime() + DAY_MS)\n}\nfunction addBusinessHours(start, hours) {\n  let remaining = hours * 60\n  let cursor = new Date(start)\n  for (let guard = 0; guard < 64; guard++) {\n    const p = parts(cursor)\n    if (CONFIG.desk.workDays.indexOf(p.dow) === -1 || p.minutes >= CONFIG.desk.closeHour * 60) {\n      cursor = nextOpening(cursor)\n      continue\n    }\n    if (p.minutes < CONFIG.desk.openHour * 60) {\n      cursor = at(p.y, p.m, p.day, CONFIG.desk.openHour)\n      continue\n    }\n    const available = CONFIG.desk.closeHour * 60 - p.minutes\n    if (remaining <= available) return new Date(cursor.getTime() + remaining * 60000)\n    remaining -= available\n    cursor = nextOpening(at(p.y, p.m, p.day, CONFIG.desk.closeHour))\n  }\n  return cursor\n}\nconst fmt = (date) =>\n  new Intl.DateTimeFormat('en-GB', {\n    timeZone: 'Asia/Riyadh',\n    weekday: 'short',\n    day: 'numeric',\n    month: 'short',\n    hour: '2-digit',\n    minute: '2-digit',\n  }).format(date) + ' AST'\n\nconst receivedAt = new Date()\nconst slaDue = addBusinessHours(receivedAt, CONFIG.slaBusinessHours)\n\nconst polymers = (Array.isArray(application.polymers) ? application.polymers : []).map(labelOf).filter(Boolean).join(', ')\nconst specsText = products\n  .map((p) => p.name + ': ' + (p.specs.map((r) => r.label + ' = ' + r.value).join('; ') || 'no specification given'))\n  .join(' | ')\nconst utm = source.utm && typeof source.utm === 'object'\n  ? Object.keys(source.utm).slice(0, 6).map((k) => s(k, 20) + '=' + s(source.utm[k], 60)).join('&')\n  : ''\n\nconst lead = {\n  reference,\n  submissionId,\n  familyCode,\n  route,\n  team: ROUTE_TEAM[route],\n  tier,\n  score,\n  receivedAtIso: receivedAt.toISOString(),\n  receivedAtLocal: fmt(receivedAt),\n  slaDueIso: slaDue.toISOString(),\n  slaDueLocal: fmt(slaDue),\n  contact: {\n    firstName: s(contact.firstName, 60),\n    lastName: s(contact.lastName, 60),\n    fullName: (s(contact.firstName, 60) + ' ' + s(contact.lastName, 60)).trim(),\n    email,\n    phone,\n    phoneDigits,\n    whatsapp: contact.whatsappOptIn === true,\n    company: s(contact.company, 100),\n    role: labelOf(contact.role),\n    channel: s(contact.preferredChannel, 20) || 'email',\n    language: contact.language === 'ar' ? 'ar' : 'en',\n    businessEmail,\n  },\n  products,\n  application: {\n    polymers,\n    process: labelOf(application.process),\n    market: labelOf(application.market),\n    finalProduct: s(application.finalProduct, 160),\n  },\n  commercial: {\n    annualVolume: labelOf(commercial.annualVolume),\n    annualVolumeId: volumeId,\n    firstOrder: labelOf(commercial.firstOrder),\n    timeline: labelOf(commercial.timeline),\n    timelineId,\n    sampleRequested: commercial.sampleRequested === true,\n    country: s(delivery.country, 60),\n    city: s(delivery.city, 80),\n    incoterm: s(delivery.incoterm, 40),\n    targetPrice: s(commercial.targetPrice, 60),\n    benchmark: s(commercial.benchmark, 80),\n  },\n  notes: lines(b && b.notes, 1500),\n  source: {\n    page: s(source.page, 300),\n    referrer: s(source.referrer, 300),\n    utm,\n    prefilledBy: s(source.prefilledBy, 20),\n    locale: s(source.locale, 20),\n  },\n}\n\nconst row = {\n  received_at: lead.receivedAtIso,\n  reference: lead.reference,\n  status: 'New',\n  tier: lead.tier,\n  score: lead.score,\n  route: lead.route,\n  team: lead.team,\n  sla_due_at: lead.slaDueIso,\n  company: lead.contact.company,\n  contact_name: lead.contact.fullName,\n  role: lead.contact.role,\n  email: lead.contact.email,\n  phone: lead.contact.phone,\n  whatsapp: yesNo(lead.contact.whatsapp),\n  preferred_channel: lead.contact.channel,\n  language: lead.contact.language,\n  products: products.map((p) => p.name).join(' + '),\n  product_ids: products.map((p) => p.id).join(','),\n  specs: specsText,\n  polymers: lead.application.polymers,\n  process: lead.application.process,\n  market: lead.application.market,\n  final_product: lead.application.finalProduct,\n  annual_volume: lead.commercial.annualVolume,\n  first_order: lead.commercial.firstOrder,\n  timeline: lead.commercial.timeline,\n  sample: yesNo(lead.commercial.sampleRequested),\n  delivery_country: lead.commercial.country,\n  delivery_city: lead.commercial.city,\n  incoterm: lead.commercial.incoterm,\n  target_price: lead.commercial.targetPrice,\n  benchmark: lead.commercial.benchmark,\n  notes: lead.notes,\n  source_page: lead.source.page,\n  utm: lead.source.utm,\n  prefilled_by: lead.source.prefilledBy,\n  submission_id: lead.submissionId,\n}\n\nreturn [\n  {\n    json: {\n      valid: errors.length === 0 && !spam,\n      spam,\n      // Spam gets a 200 so bots learn nothing; real validation problems get 422.\n      httpStatus: spam ? 200 : errors.length ? 422 : 200,\n      errors,\n      config: CONFIG,\n      lead,\n      row,\n    },\n  },\n]\n"
+      }
+    },
+    {
+      "id": "92dca796-0ebf-4102-93ce-d24608d0a9c3",
+      "name": "Payload Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -680,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "2d85ac35-1b07-422e-9d06-486e22ffaf30",
+      "name": "Find Prior Submission",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -460,
+        -60
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "pp_quote_ledger"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "submission_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.lead.submissionId }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "8971b6d1-6686-4b36-b1f2-8eb59bcdf696",
+      "name": "Already Logged?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -240,
+        -60
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.submission_id }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true
+      }
+    },
+    {
+      "id": "bef30ebf-a441-4ee3-9145-48c5eff29ced",
+      "name": "Respond · Duplicate",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -20,
+        -200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, duplicate: true, reference: $('Validate & Normalize').first().json.lead.reference }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "0ff98e6d-33ad-40ca-a5cc-e8c600ac5331",
+      "name": "Write Ledger Row",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -20,
+        40
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "pp_quote_ledger"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "submission_id": "={{ $('Validate & Normalize').first().json.lead.submissionId }}",
+            "reference": "={{ $('Validate & Normalize').first().json.lead.reference }}",
+            "received_at": "={{ $('Validate & Normalize').first().json.lead.receivedAtIso }}",
+            "route": "={{ $('Validate & Normalize').first().json.lead.route }}",
+            "tier": "={{ $('Validate & Normalize').first().json.lead.tier }}",
+            "email": "={{ $('Validate & Normalize').first().json.lead.contact.email }}",
+            "company": "={{ $('Validate & Normalize').first().json.lead.contact.company }}",
+            "payload_json": "={{ JSON.stringify($('Validate & Normalize').first().json.lead) }}"
+          },
+          "schema": [
+            {
+              "id": "submission_id",
+              "displayName": "submission_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reference",
+              "displayName": "reference",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "route",
+              "displayName": "route",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "tier",
+              "displayName": "tier",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "payload_json",
+              "displayName": "payload_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500
+    },
+    {
+      "id": "ec4e39d9-3dd8-4b10-8b9d-ba44f0aff945",
+      "name": "Sheet Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -20,
+        200
+      ],
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify($('Validate & Normalize').first().json.row) }}",
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "40d6307c-e9b1-4570-89f9-5eae853024d3",
+      "name": "Append to Master Quote Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        200,
+        40
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1DUd4fQiYWlL86c7_Io0GjQ2oM6u8vcK99Bkw9xXs3ks",
+          "cachedResultName": "Pure Polymers — Quote Requests (Master)"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Quote Log"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reference",
+              "displayName": "reference",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tier",
+              "displayName": "tier",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "score",
+              "displayName": "score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "route",
+              "displayName": "route",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "team",
+              "displayName": "team",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sla_due_at",
+              "displayName": "sla_due_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "contact_name",
+              "displayName": "contact_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "role",
+              "displayName": "role",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "whatsapp",
+              "displayName": "whatsapp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "preferred_channel",
+              "displayName": "preferred_channel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "language",
+              "displayName": "language",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "products",
+              "displayName": "products",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "product_ids",
+              "displayName": "product_ids",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "specs",
+              "displayName": "specs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "polymers",
+              "displayName": "polymers",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "process",
+              "displayName": "process",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "market",
+              "displayName": "market",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "final_product",
+              "displayName": "final_product",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "annual_volume",
+              "displayName": "annual_volume",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "first_order",
+              "displayName": "first_order",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "timeline",
+              "displayName": "timeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sample",
+              "displayName": "sample",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "delivery_country",
+              "displayName": "delivery_country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "delivery_city",
+              "displayName": "delivery_city",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "incoterm",
+              "displayName": "incoterm",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "target_price",
+              "displayName": "target_price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "benchmark",
+              "displayName": "benchmark",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source_page",
+              "displayName": "source_page",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "utm",
+              "displayName": "utm",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "prefilled_by",
+              "displayName": "prefilled_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "submission_id",
+              "displayName": "submission_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED",
+          "handlingExtraData": "insertInNewColumn"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "4skWlyOrFj84KJxt",
+          "name": "Google Sheets oussama19"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "43617237-1881-4360-90a5-ec99446473ee",
+      "name": "Respond · Logged",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        420,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, reference: $('Validate & Normalize').first().json.lead.reference, receivedAt: $('Validate & Normalize').first().json.lead.receivedAtIso, quotationDueAt: $('Validate & Normalize').first().json.lead.slaDueIso, team: $('Validate & Normalize').first().json.lead.team, storage: 'sheet' }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "6fe76a0e-80af-4f7f-af85-7d81ef0626ea",
+      "name": "Alert Ops · Sheet Write Failed",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        420,
+        220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Validate & Normalize').first().json.config.pilotRecipient }}",
+        "subject": "=⚠️ Quote log write failed — {{ $('Validate & Normalize').first().json.lead.reference }} (lead is safe in the ledger)",
+        "emailType": "html",
+        "message": "=<p>Google Sheets rejected the append for <b>{{ $('Validate & Normalize').first().json.lead.reference }}</b> ({{ $('Validate & Normalize').first().json.lead.contact.company }}).</p><p>The full lead is stored in the <code>pp_quote_ledger</code> data table and the buyer still received their confirmation. Copy the row across manually.</p><pre style=\"font:12px monospace;white-space:pre-wrap\">{{ JSON.stringify($('Validate & Normalize').first().json.row, null, 2) }}</pre>",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Pure Polymers Pipeline"
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "dOUKyFaNKoqvOG7O",
+          "name": "oussamalabs"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "f3deba1b-add2-4f4d-96fe-f51cf59e7844",
+      "name": "Respond · Logged (ledger)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        640,
+        220
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, reference: $('Validate & Normalize').first().json.lead.reference, receivedAt: $('Validate & Normalize').first().json.lead.receivedAtIso, quotationDueAt: $('Validate & Normalize').first().json.lead.slaDueIso, team: $('Validate & Normalize').first().json.lead.team, storage: 'ledger' }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "9752e7d9-7716-41af-940e-2239683c7ffa",
+      "name": "Respond · Rejected",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -460,
+        180
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: $json.spam, reference: $json.lead.reference, errors: $json.spam ? [] : $json.errors }) }}",
+        "options": {
+          "responseCode": "={{ $json.httpStatus }}"
+        }
+      }
+    },
+    {
+      "id": "b6a72bf8-d1dc-4c13-bdb2-586a4a34c7f8",
+      "name": "Route by Product Family",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        860,
+        0
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "renameOutput": true,
+              "outputKey": "Color · white · black",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Validate & Normalize').first().json.lead.route }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "color_pigment"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "renameOutput": true,
+              "outputKey": "Additives",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Validate & Normalize').first().json.lead.route }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "additive"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "renameOutput": true,
+              "outputKey": "Compounds",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Validate & Normalize').first().json.lead.route }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "compound"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Unclassified"
+        }
+      }
+    },
+    {
+      "id": "85658aac-5976-47f5-a73d-90d7367eb3ec",
+      "name": "Route · Color Lab",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1080,
+        -260
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "team",
+              "name": "route_team",
+              "value": "Color Lab",
+              "type": "string"
+            },
+            {
+              "id": "variant",
+              "name": "route_variant",
+              "value": "color",
+              "type": "string"
+            },
+            {
+              "id": "recipients",
+              "name": "route_recipients",
+              "value": "sales.color@purepolymers.net",
+              "type": "string"
+            },
+            {
+              "id": "cc",
+              "name": "route_cc",
+              "value": "info@purepolymers.net",
+              "type": "string"
+            },
+            {
+              "id": "focus",
+              "name": "route_focus",
+              "value": "Confirm the shade match (Pantone / RAL / sample), let-down ratio and whether a physical sample is needed before quoting.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "98ba6333-7697-4fb6-b8c6-845161f622e8",
+      "name": "Route · Additives Desk",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1080,
+        -80
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "team",
+              "name": "route_team",
+              "value": "Additives Technical Desk",
+              "type": "string"
+            },
+            {
+              "id": "variant",
+              "name": "route_variant",
+              "value": "additive",
+              "type": "string"
+            },
+            {
+              "id": "recipients",
+              "name": "route_recipients",
+              "value": "technical@purepolymers.net",
+              "type": "string"
+            },
+            {
+              "id": "cc",
+              "name": "route_cc",
+              "value": "info@purepolymers.net",
+              "type": "string"
+            },
+            {
+              "id": "focus",
+              "name": "route_focus",
+              "value": "Confirm dosage for the stated polymer and process, and flag any grade not documented for that polymer.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "032d5941-1f6c-42cb-9547-389b5e9eb799",
+      "name": "Route · Compounding Team",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1080,
+        100
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "team",
+              "name": "route_team",
+              "value": "Compounding Team",
+              "type": "string"
+            },
+            {
+              "id": "variant",
+              "name": "route_variant",
+              "value": "compound",
+              "type": "string"
+            },
+            {
+              "id": "recipients",
+              "name": "route_recipients",
+              "value": "compounds@purepolymers.net",
+              "type": "string"
+            },
+            {
+              "id": "cc",
+              "name": "route_cc",
+              "value": "info@purepolymers.net",
+              "type": "string"
+            },
+            {
+              "id": "focus",
+              "name": "route_focus",
+              "value": "Confirm base resin selection, additive package and minimum batch size for the compound.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "51e5ac6a-aa97-4bc5-b80b-3810676cb16d",
+      "name": "Route · Sales Triage",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1080,
+        280
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "team",
+              "name": "route_team",
+              "value": "Sales Desk (triage)",
+              "type": "string"
+            },
+            {
+              "id": "variant",
+              "name": "route_variant",
+              "value": "triage",
+              "type": "string"
+            },
+            {
+              "id": "recipients",
+              "name": "route_recipients",
+              "value": "info@purepolymers.net",
+              "type": "string"
+            },
+            {
+              "id": "cc",
+              "name": "route_cc",
+              "value": "info@purepolymers.net",
+              "type": "string"
+            },
+            {
+              "id": "focus",
+              "name": "route_focus",
+              "value": "Product family could not be classified automatically — assign an owner manually.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "8061bfcd-af28-4c52-b956-f9c91cfe35c3",
+      "name": "Compose Sales Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -220
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "/**\n * Code node · \"Compose Sales Alert\" (run once for all items)\n * In : the executed route Set node (Switch branch)\n * Out: one item { to, cc, subject, html } for the internal Gmail node\n */\n\nconst BRAND = {\n  ink: '#0B0F14',\n  ink2: '#151b23',\n  paper: '#F5F7FA',\n  line: '#dfe4ea',\n  text: '#1d242e',\n  muted: '#5d6875',\n  green: '#509C35',\n  lime: '#BECC30',\n  blue: '#3249B3',\n  amber: '#E09A2D',\n  whatsapp: '#1ea952',\n}\n\nfunction esc(value) {\n  return String(value === undefined || value === null ? '' : value)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n}\n\nfunction row(label, value) {\n  if (!value) return ''\n  return (\n    '<tr>' +\n    '<td style=\"padding:6px 12px 6px 0;font:12px Arial,sans-serif;color:' + BRAND.muted + ';white-space:nowrap;vertical-align:top;\">' + esc(label) + '</td>' +\n    '<td style=\"padding:6px 0;font:13px Arial,sans-serif;color:' + BRAND.text + ';vertical-align:top;\">' + esc(value) + '</td>' +\n    '</tr>'\n  )\n}\n\nfunction table(rows) {\n  const body = rows.filter(Boolean).join('')\n  return body ? '<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">' + body + '</table>' : ''\n}\n\nfunction sectionTitle(text) {\n  return '<p style=\"margin:22px 0 8px;font:600 10px/1.4 Consolas,Menlo,monospace;letter-spacing:2px;text-transform:uppercase;color:' + BRAND.muted + ';\">' + esc(text) + '</p>'\n}\n\nfunction button(href, label, background, color) {\n  return (\n    '<a href=\"' + esc(href) + '\" style=\"display:inline-block;background:' + background + ';color:' + (color || '#ffffff') +\n    ';font:600 14px Arial,sans-serif;text-decoration:none;padding:12px 22px;border-radius:8px;\">' + esc(label) + '</a>'\n  )\n}\n\nfunction preheader(text) {\n  return '<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:' + BRAND.paper + ';\">' + esc(text) + '</div>'\n}\n\n/** 600px branded shell used by every outbound email. */\nfunction shell(options) {\n  return (\n    '<div style=\"background:' + BRAND.paper + ';padding:24px 12px;\">' +\n    preheader(options.preheader || '') +\n    '<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;margin:0 auto;background:#ffffff;border:1px solid ' + BRAND.line + ';border-radius:14px;overflow:hidden;\">' +\n    '<tr><td style=\"background:' + BRAND.ink + ';padding:18px 26px;\">' +\n    '<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>' +\n    '<td style=\"font:700 18px Arial,sans-serif;color:#ffffff;\">Pure Polymers' +\n    '<div style=\"font:italic 600 11px Arial,sans-serif;color:' + BRAND.lime + ';padding-top:3px;\">Real Passion for Quality</div></td>' +\n    '<td align=\"right\" style=\"font:600 11px Consolas,Menlo,monospace;color:' + BRAND.lime + ';letter-spacing:1px;\">' + esc(options.badge || '') + '</td>' +\n    '</tr></table></td></tr>' +\n    '<tr><td style=\"height:4px;background:linear-gradient(90deg,' + BRAND.green + ',' + BRAND.lime + ',' + BRAND.blue + ');font-size:0;line-height:0;\">&nbsp;</td></tr>' +\n    '<tr><td style=\"padding:26px;\">' + options.body + '</td></tr>' +\n    '<tr><td style=\"background:#f2f4f7;padding:16px 26px;font:12px Arial,sans-serif;color:' + BRAND.muted + ';\">' + options.footer + '</td></tr>' +\n    '</table></div>'\n  )\n}\n\nfunction waLink(phoneDigits, text) {\n  return 'https://wa.me/' + phoneDigits + (text ? '?text=' + encodeURIComponent(text) : '')\n}\n\n\nconst v = $('Validate & Normalize').first().json\nconst lead = v.lead\nconst config = v.config\n\n// Exactly one Switch branch runs per execution; find which route Set node fired.\nconst ROUTE_NODES = ['Route · Color Lab', 'Route · Additives Desk', 'Route · Compounding Team', 'Route · Sales Triage']\nlet route = null\nfor (const name of ROUTE_NODES) {\n  try {\n    if ($(name).isExecuted) {\n      route = $(name).first().json\n      break\n    }\n  } catch (error) {\n    // node not part of this execution path\n  }\n}\nif (!route) route = { route_team: lead.team, route_recipients: config.pilotRecipient, route_variant: 'triage', route_focus: '' }\n\nconst tierStyle = { HOT: { emoji: '🔥', color: '#c2410c' }, WARM: { emoji: '🟡', color: '#a16207' }, NURTURE: { emoji: '⚪', color: BRAND.muted } }[lead.tier]\nconst productNames = lead.products.map((p) => p.name).join(' + ')\n\nconst replyBody =\n  'Dear ' + lead.contact.firstName + ',%0D%0A%0D%0AThank you for your request ' + lead.reference + '.%0D%0A%0D%0A'\nconst mailto =\n  'mailto:' + lead.contact.email +\n  '?subject=' + encodeURIComponent('Pure Polymers quotation ' + lead.reference + ' — ' + productNames) +\n  '&body=' + replyBody\nconst waText =\n  'Hello ' + lead.contact.firstName + ', this is Pure Polymers (Modon 3, Jeddah) about your quote request ' +\n  lead.reference + ' for ' + productNames + '.'\n\nconst specBlocks = lead.products\n  .map(\n    (p) =>\n      '<div style=\"border:1px solid ' + BRAND.line + ';border-radius:10px;padding:12px 14px;margin-bottom:10px;\">' +\n      '<div style=\"font:600 14px Arial,sans-serif;color:' + BRAND.text + ';\">' + esc(p.name) + '</div>' +\n      table(p.specs.map((r) => row(r.label, r.value))) +\n      '</div>',\n  )\n  .join('')\n\nconst body =\n  '<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>' +\n  '<td style=\"font:700 22px Arial,sans-serif;color:' + BRAND.text + ';\">' + tierStyle.emoji + ' ' + esc(lead.tier) +\n  ' lead · <span style=\"font-family:Consolas,Menlo,monospace;\">' + esc(lead.reference) + '</span></td>' +\n  '<td align=\"right\" style=\"font:600 12px Arial,sans-serif;color:' + tierStyle.color + ';\">score ' + lead.score + '/100</td>' +\n  '</tr></table>' +\n  '<p style=\"margin:6px 0 0;font:13px Arial,sans-serif;color:' + BRAND.muted + ';\">' +\n  esc(route.route_team) + ' · received ' + esc(lead.receivedAtLocal) +\n  ' · <strong style=\"color:' + BRAND.text + ';\">quotation due ' + esc(lead.slaDueLocal) + '</strong></p>' +\n  (route.route_focus\n    ? '<p style=\"margin:14px 0 0;padding:10px 12px;background:#f2f7ef;border-left:3px solid ' + BRAND.green +\n      ';font:13px Arial,sans-serif;color:' + BRAND.text + ';\">' + esc(route.route_focus) + '</p>'\n    : '') +\n  sectionTitle('Buyer') +\n  table([\n    row('Company', lead.contact.company),\n    row('Contact', lead.contact.fullName + (lead.contact.role ? ' · ' + lead.contact.role : '')),\n    row('Email', lead.contact.email),\n    row('Phone', lead.contact.phone + (lead.contact.whatsapp ? ' (WhatsApp)' : '')),\n    row('Prefers', lead.contact.channel + ' · replies in ' + (lead.contact.language === 'ar' ? 'Arabic' : 'English')),\n    row('Email type', lead.contact.businessEmail ? 'Company domain' : 'Free mailbox'),\n  ]) +\n  sectionTitle('Technical request') +\n  specBlocks +\n  table([\n    row('Base polymer', lead.application.polymers),\n    row('Process', lead.application.process),\n    row('End market', lead.application.market),\n    row('Final product', lead.application.finalProduct),\n  ]) +\n  sectionTitle('Commercial') +\n  table([\n    row('Annual volume', lead.commercial.annualVolume),\n    row('First order', lead.commercial.firstOrder),\n    row('Timeline', lead.commercial.timeline),\n    row('Lab sample first', lead.commercial.sampleRequested ? 'Yes — ships within 7 business days' : 'No'),\n    row('Delivery', [lead.commercial.city, lead.commercial.country].filter(Boolean).join(', ')),\n    row('Incoterm', lead.commercial.incoterm),\n    row('Target price', lead.commercial.targetPrice),\n    row('Grade used today', lead.commercial.benchmark),\n  ]) +\n  (lead.notes\n    ? sectionTitle('Notes from the buyer') +\n      '<p style=\"margin:0;font:13px/1.6 Arial,sans-serif;color:' + BRAND.text + ';white-space:pre-line;\">' + esc(lead.notes) + '</p>'\n    : '') +\n  '<div style=\"margin:24px 0 6px;\">' +\n  button(mailto, 'Reply by email', BRAND.green) + '&nbsp;&nbsp;' +\n  (lead.contact.phoneDigits ? button(waLink(lead.contact.phoneDigits, waText), 'WhatsApp the buyer', BRAND.whatsapp) + '&nbsp;&nbsp;' : '') +\n  button(config.quoteLogUrl, 'Open quote log', BRAND.ink) +\n  '</div>' +\n  sectionTitle('Source') +\n  table([\n    row('Page', lead.source.page),\n    row('Campaign', lead.source.utm),\n    row('Prefilled by', lead.source.prefilledBy === 'assistant' ? 'AI assistant conversation' : ''),\n    row('Submission id', lead.submissionId),\n  ])\n\nconst html = shell({\n  badge: 'NEW QUOTE REQUEST',\n  preheader: lead.tier + ' · ' + productNames + ' · ' + (lead.commercial.annualVolume || 'volume not given') + ' · ' + lead.contact.company,\n  body,\n  footer: 'Automated by the Pure Polymers quote pipeline · reply directly to the buyer, then set the row status in the quote log.',\n})\n\nreturn [\n  {\n    json: {\n      to: config.mode === 'live' ? route.route_recipients : config.pilotRecipient,\n      cc: config.mode === 'live' ? route.route_cc || '' : '',\n      subject:\n        tierStyle.emoji + ' ' + lead.tier + ' · ' + lead.reference + ' · ' + productNames + ' · ' +\n        (lead.commercial.annualVolume || 'volume TBC') + ' · ' + lead.contact.company,\n      html,\n      tier: lead.tier,\n      reference: lead.reference,\n      pingText:\n        lead.tier + ' quote request ' + lead.reference + ': ' + productNames + ' for ' + lead.contact.company +\n        ' (' + (lead.commercial.annualVolume || 'volume TBC') + '). Quotation due ' + lead.slaDueLocal + '.',\n    },\n  },\n]\n"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "438f0d63-3a2a-47da-ba83-e594d08f61ce",
+      "name": "Read TDS Library",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1340,
+        120
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1DUd4fQiYWlL86c7_Io0GjQ2oM6u8vcK99Bkw9xXs3ks",
+          "cachedResultName": "Pure Polymers — Quote Requests (Master)"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "TDS_Library"
+        },
+        "options": {
+          "returnAllMatches": "returnAllMatches"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "4skWlyOrFj84KJxt",
+          "name": "Google Sheets oussama19"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a11527a2-17ba-497d-be47-ee488aab4a54",
+      "name": "Send Sales Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1560,
+        -220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Pure Polymers Quote Pipeline",
+          "ccList": "={{ $json.cc }}"
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "dOUKyFaNKoqvOG7O",
+          "name": "oussamalabs"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b94f627f-d25d-4375-a953-a10b663f974e",
+      "name": "Hot Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1780,
+        -220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Compose Sales Alert').first().json.tier }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "HOT"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "7aea883a-fab4-4107-a283-ba7b23c64581",
+      "name": "WhatsApp Ping · Hot Lead",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        -300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendTemplate",
+        "phoneNumberId": "<__PLACEHOLDER_VALUE__WhatsApp Business phone number ID__>",
+        "recipientPhoneNumber": "966546460891",
+        "template": "<__PLACEHOLDER_VALUE__Approved template name, e.g. new_quote_alert__>",
+        "components": {
+          "component": [
+            {
+              "type": "body",
+              "bodyParameters": {
+                "parameter": [
+                  {
+                    "type": "text",
+                    "text": "={{ $('Compose Sales Alert').first().json.reference }}"
+                  },
+                  {
+                    "type": "text",
+                    "text": "={{ $('Compose Sales Alert').first().json.pingText }}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "credentials": {},
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "312e3eba-af02-448f-9b73-56c671b01421",
+      "name": "Resolve TDS Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        120
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "/**\n * Code node · \"Resolve TDS Files\" (run once for all items)\n * In : rows of the TDS_Library sheet tab (may be empty, or one error item)\n * Out: exactly one item { hasTds, tdsFiles[], missing[] } — never zero items, so the\n *      buyer confirmation always goes out even when no data sheet is on file.\n */\n\nconst v = $('Validate & Normalize').first().json\nconst rows = $input\n  .all()\n  .map((item) => item.json)\n  .filter((r) => r && r.product_id && r.tds_file_id)\n\nconst byProduct = {}\nfor (const r of rows) {\n  byProduct[String(r.product_id).trim()] = r\n}\n\nconst tdsFiles = []\nconst missing = []\nfor (const product of v.lead.products) {\n  const match = byProduct[product.id]\n  if (match) {\n    tdsFiles.push({\n      productId: product.id,\n      productName: product.name,\n      fileId: String(match.tds_file_id).trim(),\n      fileName: String(match.tds_file_name || 'TDS - ' + product.name + '.pdf').trim(),\n      version: String(match.version || '').trim(),\n    })\n  } else {\n    missing.push(product.name)\n  }\n}\n\nreturn [{ json: { hasTds: tdsFiles.length > 0, tdsFiles, missing } }]\n"
+      }
+    },
+    {
+      "id": "e29af501-d9f5-409f-a3c8-ef912c36dba5",
+      "name": "Has TDS on File?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1780,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.hasTds }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "9b5b2f86-bed9-4520-bb49-276a38dcc2be",
+      "name": "Split TDS Files",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        40
+      ],
+      "parameters": {
+        "fieldToSplitOut": "tdsFiles",
+        "include": "noOtherFields",
+        "options": {}
+      }
+    },
+    {
+      "id": "0ccbe37f-fd2a-45a8-9fd6-a71ee4fff3cc",
+      "name": "Download TDS",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2220,
+        40
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.fileId }}"
+        },
+        "options": {
+          "binaryPropertyName": "data",
+          "fileName": "={{ $json.fileName }}"
+        }
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "NNBcR47K9hjDpeHN",
+          "name": "Google Drive account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "42e04d62-cd62-4dc1-ab08-ad4077a22b42",
+      "name": "Bundle TDS & Compose Buyer Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        120
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "/**\n * Code node · \"Bundle TDS & Compose Buyer Email\" (run once for all items)\n * In : either the downloaded TDS files (one item per file, binary \"data\")\n *      or the single no-TDS item straight from \"Has TDS on File?\"\n * Out: one item { to, subject, html, attachmentProps, hasAttachments } + merged binary\n *\n * This is the anti-ghosting email: reference number, what happens next with a dated\n * promise, the exact spec we received, the TDS, and two ways to reach a human.\n */\n\nconst BRAND = {\n  ink: '#0B0F14',\n  ink2: '#151b23',\n  paper: '#F5F7FA',\n  line: '#dfe4ea',\n  text: '#1d242e',\n  muted: '#5d6875',\n  green: '#509C35',\n  lime: '#BECC30',\n  blue: '#3249B3',\n  amber: '#E09A2D',\n  whatsapp: '#1ea952',\n}\n\nfunction esc(value) {\n  return String(value === undefined || value === null ? '' : value)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n}\n\nfunction row(label, value) {\n  if (!value) return ''\n  return (\n    '<tr>' +\n    '<td style=\"padding:6px 12px 6px 0;font:12px Arial,sans-serif;color:' + BRAND.muted + ';white-space:nowrap;vertical-align:top;\">' + esc(label) + '</td>' +\n    '<td style=\"padding:6px 0;font:13px Arial,sans-serif;color:' + BRAND.text + ';vertical-align:top;\">' + esc(value) + '</td>' +\n    '</tr>'\n  )\n}\n\nfunction table(rows) {\n  const body = rows.filter(Boolean).join('')\n  return body ? '<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">' + body + '</table>' : ''\n}\n\nfunction sectionTitle(text) {\n  return '<p style=\"margin:22px 0 8px;font:600 10px/1.4 Consolas,Menlo,monospace;letter-spacing:2px;text-transform:uppercase;color:' + BRAND.muted + ';\">' + esc(text) + '</p>'\n}\n\nfunction button(href, label, background, color) {\n  return (\n    '<a href=\"' + esc(href) + '\" style=\"display:inline-block;background:' + background + ';color:' + (color || '#ffffff') +\n    ';font:600 14px Arial,sans-serif;text-decoration:none;padding:12px 22px;border-radius:8px;\">' + esc(label) + '</a>'\n  )\n}\n\nfunction preheader(text) {\n  return '<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:' + BRAND.paper + ';\">' + esc(text) + '</div>'\n}\n\n/** 600px branded shell used by every outbound email. */\nfunction shell(options) {\n  return (\n    '<div style=\"background:' + BRAND.paper + ';padding:24px 12px;\">' +\n    preheader(options.preheader || '') +\n    '<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;margin:0 auto;background:#ffffff;border:1px solid ' + BRAND.line + ';border-radius:14px;overflow:hidden;\">' +\n    '<tr><td style=\"background:' + BRAND.ink + ';padding:18px 26px;\">' +\n    '<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>' +\n    '<td style=\"font:700 18px Arial,sans-serif;color:#ffffff;\">Pure Polymers' +\n    '<div style=\"font:italic 600 11px Arial,sans-serif;color:' + BRAND.lime + ';padding-top:3px;\">Real Passion for Quality</div></td>' +\n    '<td align=\"right\" style=\"font:600 11px Consolas,Menlo,monospace;color:' + BRAND.lime + ';letter-spacing:1px;\">' + esc(options.badge || '') + '</td>' +\n    '</tr></table></td></tr>' +\n    '<tr><td style=\"height:4px;background:linear-gradient(90deg,' + BRAND.green + ',' + BRAND.lime + ',' + BRAND.blue + ');font-size:0;line-height:0;\">&nbsp;</td></tr>' +\n    '<tr><td style=\"padding:26px;\">' + options.body + '</td></tr>' +\n    '<tr><td style=\"background:#f2f4f7;padding:16px 26px;font:12px Arial,sans-serif;color:' + BRAND.muted + ';\">' + options.footer + '</td></tr>' +\n    '</table></div>'\n  )\n}\n\nfunction waLink(phoneDigits, text) {\n  return 'https://wa.me/' + phoneDigits + (text ? '?text=' + encodeURIComponent(text) : '')\n}\n\n\nconst v = $('Validate & Normalize').first().json\nconst resolved = $('Resolve TDS Files').first().json\nconst lead = v.lead\nconst config = v.config\n\nconst ROUTE_NODES = ['Route · Color Lab', 'Route · Additives Desk', 'Route · Compounding Team', 'Route · Sales Triage']\nlet route = null\nfor (const name of ROUTE_NODES) {\n  try {\n    if ($(name).isExecuted) {\n      route = $(name).first().json\n      break\n    }\n  } catch (error) {\n    // node not on this execution path\n  }\n}\nif (!route) route = { route_team: lead.team, route_variant: 'triage', route_buyer_note: '' }\n\n/* Collect whatever Google Drive actually returned; a failed download simply drops out. */\nconst binary = {}\nconst attachedNames = []\nconst items = $input.all()\nitems.forEach((item, index) => {\n  const data = item.binary && item.binary.data\n  if (!data) return\n  const file = resolved.tdsFiles[index] || {}\n  const key = 'tds_' + index\n  binary[key] = Object.assign({}, data, { fileName: file.fileName || data.fileName })\n  attachedNames.push(file.productName || file.fileName || data.fileName)\n})\nconst attachmentProps = Object.keys(binary).join(',')\n\nconst arabic = lead.contact.language === 'ar'\nconst visualizerUrl =\n  config.visualizerUrl +\n  (config.visualizerUrl.indexOf('?') === -1 ? '?' : '&') +\n  'ref=' + encodeURIComponent(lead.reference) + '&utm_source=quote-confirmation&utm_medium=email&utm_campaign=quote-next-step'\nconst waText = 'Hello Pure Polymers, this is a follow-up on quote request ' + lead.reference + ' from ' + lead.contact.company + '.'\n\nconst steps = [\n  { when: 'Done · ' + lead.receivedAtLocal, title: 'Request received and logged', detail: 'Reference ' + lead.reference + ' is in our quote log.' },\n  { when: 'In progress', title: 'Technical review', detail: 'Your specification is with the ' + route.route_team + ' at our Modon 3 plant.' },\n  { when: 'By ' + lead.slaDueLocal, title: 'Formal quotation', detail: 'Pricing, dosage recommendation and lead time, by email.' },\n  lead.commercial.sampleRequested\n    ? { when: 'After your approval', title: 'Lab sample', detail: 'Samples ship within 7 business days so you can validate on your own line.' }\n    : null,\n].filter(Boolean)\n\nconst stepRows = steps\n  .map(\n    (step) =>\n      '<tr>' +\n      '<td width=\"150\" style=\"padding:10px 12px 10px 0;font:600 11px Consolas,Menlo,monospace;color:' + BRAND.green + ';vertical-align:top;white-space:nowrap;\">' +\n      esc(step.when) + '</td>' +\n      '<td style=\"padding:10px 0;border-left:2px solid ' + BRAND.line + ';padding-left:14px;\">' +\n      '<div style=\"font:600 14px Arial,sans-serif;color:' + BRAND.text + ';\">' + esc(step.title) + '</div>' +\n      '<div style=\"font:13px Arial,sans-serif;color:' + BRAND.muted + ';padding-top:2px;\">' + esc(step.detail) + '</div>' +\n      '</td></tr>',\n  )\n  .join('')\n\nconst specBlocks = lead.products\n  .map(\n    (p) =>\n      '<div style=\"border:1px solid ' + BRAND.line + ';border-radius:10px;padding:12px 14px;margin-bottom:10px;\">' +\n      '<div style=\"font:600 14px Arial,sans-serif;color:' + BRAND.text + ';\">' + esc(p.name) + '</div>' +\n      table(p.specs.map((r) => row(r.label, r.value))) +\n      '</div>',\n  )\n  .join('')\n\nconst attachmentLine = attachedNames.length\n  ? 'Attached to this email: technical data sheets for ' + attachedNames.join(', ') + '.'\n  : 'Your technical data sheet follows from the ' + route.route_team + ' with the quotation.'\n\nconst body =\n  (arabic\n    ? '<p dir=\"rtl\" style=\"margin:0 0 14px;font:15px/1.7 Arial,sans-serif;color:' + BRAND.text + ';\">' +\n      'شكراً لتواصلكم مع Pure Polymers. تم استلام طلب عرض السعر الخاص بكم وتسجيله برقم مرجعي ' + esc(lead.reference) + '.' +\n      '</p>'\n    : '') +\n  '<p style=\"margin:0;font:15px/1.6 Arial,sans-serif;color:' + BRAND.text + ';\">Dear ' + esc(lead.contact.firstName) + ',</p>' +\n  '<p style=\"margin:10px 0 0;font:15px/1.6 Arial,sans-serif;color:' + BRAND.text + ';\">' +\n  'Thank you for your quote request. It is logged with our sales desk in Modon 3, Jeddah, and the <strong>' + esc(route.route_team) +\n  '</strong> is reviewing your specification now. ' + esc(attachmentLine) + '</p>' +\n  '<div style=\"margin:20px 0;padding:16px 18px;background:#f7f9fb;border:1px solid ' + BRAND.line + ';border-radius:10px;\">' +\n  '<div style=\"font:600 10px Consolas,Menlo,monospace;letter-spacing:2px;text-transform:uppercase;color:' + BRAND.muted + ';\">Your reference</div>' +\n  '<div style=\"font:700 26px Consolas,Menlo,monospace;color:' + BRAND.ink + ';padding-top:4px;\">' + esc(lead.reference) + '</div>' +\n  '<div style=\"font:12px Arial,sans-serif;color:' + BRAND.muted + ';padding-top:6px;\">Quote this number on WhatsApp, by phone or by email and we find your full specification instantly.</div>' +\n  '</div>' +\n  sectionTitle('What happens next') +\n  '<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">' + stepRows + '</table>' +\n  sectionTitle('The specification we received') +\n  specBlocks +\n  table([\n    row('Base polymer', lead.application.polymers),\n    row('Process', lead.application.process),\n    row('End market', lead.application.market),\n    row('Final product', lead.application.finalProduct),\n    row('Annual volume', lead.commercial.annualVolume),\n    row('First order', lead.commercial.firstOrder),\n    row('Timeline', lead.commercial.timeline),\n    row('Delivery', [lead.commercial.city, lead.commercial.country].filter(Boolean).join(', ')),\n    row('Incoterm', lead.commercial.incoterm),\n  ]) +\n  '<div style=\"margin:24px 0 0;padding:18px;border:1px solid #f0d9ad;border-radius:12px;background:#fdf6e9;\">' +\n  '<div style=\"font:600 10px Consolas,Menlo,monospace;letter-spacing:2px;text-transform:uppercase;color:#a1741f;\">While our lab prices your inquiry</div>' +\n  '<div style=\"font:700 18px Arial,sans-serif;color:' + BRAND.text + ';padding:6px 0 4px;\">See your colors on real products — and take 5% off</div>' +\n  '<div style=\"font:13px/1.6 Arial,sans-serif;color:' + BRAND.muted + ';padding-bottom:14px;\">' +\n  'Try shades on bags, caps, pipes, cups and more in the Pure Polymers Colors Visualizer. Mention ' + esc(lead.reference) +\n  ' and the 5% visualizer offer is noted on your quotation.</div>' +\n  button(visualizerUrl, 'Open the Colors Visualizer', BRAND.amber, '#1d242e') +\n  '</div>' +\n  '<div style=\"margin:22px 0 0;text-align:center;\">' +\n  button(waLink(config.whatsappE164, waText), 'Reply on WhatsApp', BRAND.whatsapp) +\n  '<div style=\"font:12px Arial,sans-serif;color:' + BRAND.muted + ';padding-top:10px;\">Need to add something? Reply to this email or message the desk on WhatsApp.</div>' +\n  '</div>'\n\nconst footer =\n  '<strong style=\"color:' + BRAND.text + ';\">Pure Polymers for Industries</strong> · Modon 3, Jeddah, Saudi Arabia<br>' +\n  '+966 12 663 1575 · +966 54 646 0891 · info@purepolymers.net<br><br>' +\n  '<span style=\"font-size:11px;\">PIF Industrial Business Accelerator (2025) · d2w® oxo-biodegradable with Symphony Environmental, SASO 2879 · Italian twin-screw extrusion since 2017</span><br>' +\n  '<span style=\"font-size:11px;\">You received this because you requested a quotation on purepolymers.net.</span>'\n\nconst html = shell({\n  badge: 'QUOTE REQUEST ' + lead.reference,\n  preheader: 'Reference ' + lead.reference + ' is logged — quotation by ' + lead.slaDueLocal + '.',\n  body,\n  footer,\n})\n\nreturn [\n  {\n    json: {\n      to: lead.contact.email,\n      replyTo: config.replyTo,\n      subject: 'Your quote request ' + lead.reference + ' — ' + lead.products.map((p) => p.name).join(' + '),\n      html,\n      attachmentProps,\n      hasAttachments: attachmentProps !== '',\n      attached: attachedNames,\n    },\n    binary,\n    pairedItem: { item: 0 },\n  },\n]\n"
+      }
+    },
+    {
+      "id": "77d828f4-9c7d-413b-8f63-158a8fa4784a",
+      "name": "Attachments Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2660,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.hasAttachments }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "1d94bcb9-2af8-4b68-bd9a-6791fb8bbcda",
+      "name": "Send Buyer Confirmation + TDS",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2880,
+        40
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Pure Polymers Sales Desk",
+          "replyTo": "={{ $json.replyTo }}",
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "={{ $json.attachmentProps }}"
+              }
+            ]
+          }
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "dOUKyFaNKoqvOG7O",
+          "name": "oussamalabs"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "327414e8-69a7-460e-aaa2-cbdc9a5ff66b",
+      "name": "Send Buyer Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2880,
+        220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Pure Polymers Sales Desk",
+          "replyTo": "={{ $json.replyTo }}"
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "dOUKyFaNKoqvOG7O",
+          "name": "oussamalabs"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "26c7e395-a064-499a-a476-81a425f40576",
+      "name": "Sticky Note 26c7e395",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1152,
+        -96
+      ],
+      "parameters": {
+        "content": "## B · Quote Intake — the anti-ghosting pipeline\nPOST /webhook/pure-polymers/quote (schema pp.quote.v1)\n\n**Order matters:** validate → de-duplicate on submissionId → persist (data table, then master sheet) → RESPOND to the browser → only then notify.\nThe buyer never waits on Gmail, and a Sheets outage cannot lose a lead: the ledger row is already written and ops gets an alert.\n\nSetup: create the `pp_quote_ledger` data table, pick the master spreadsheet on both Sheets nodes, and set CONFIG.mode to `live` inside \"Validate & Normalize\" once the routing addresses are confirmed.",
+        "color": 4,
+        "width": 608,
+        "height": 224
+      }
+    },
+    {
+      "id": "a475b1b3-7031-47a8-9b02-f4378f0b3344",
+      "name": "Sticky Note a475b1b3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1312,
+        -320
+      ],
+      "parameters": {
+        "content": "## Dual notification\nInternal: routed by product family to the desk that prices it, with a lead score, the SLA due time and one-tap reply buttons. Hot leads can also ping WhatsApp (node disabled until a template is approved).\n\nExternal: the buyer gets the reference, a dated promise, the spec we received, the TDS from the Drive library and the 5% Colors Visualizer offer — the reason they stop shopping around.",
+        "color": 3,
+        "width": 384,
+        "height": 560
+      }
+    }
+  ],
+  "connections": {
+    "Quote Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate & Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Normalize": {
+      "main": [
+        [
+          {
+            "node": "Payload Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payload Valid?": {
+      "main": [
+        [
+          {
+            "node": "Find Prior Submission",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond · Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Prior Submission": {
+      "main": [
+        [
+          {
+            "node": "Already Logged?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already Logged?": {
+      "main": [
+        [
+          {
+            "node": "Respond · Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write Ledger Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Ledger Row": {
+      "main": [
+        [
+          {
+            "node": "Sheet Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet Row": {
+      "main": [
+        [
+          {
+            "node": "Append to Master Quote Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to Master Quote Log": {
+      "main": [
+        [
+          {
+            "node": "Respond · Logged",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert Ops · Sheet Write Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond · Logged": {
+      "main": [
+        [
+          {
+            "node": "Route by Product Family",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Ops · Sheet Write Failed": {
+      "main": [
+        [
+          {
+            "node": "Respond · Logged (ledger)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond · Logged (ledger)": {
+      "main": [
+        [
+          {
+            "node": "Route by Product Family",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Product Family": {
+      "main": [
+        [
+          {
+            "node": "Route · Color Lab",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route · Additives Desk",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route · Compounding Team",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route · Sales Triage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route · Color Lab": {
+      "main": [
+        [
+          {
+            "node": "Compose Sales Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read TDS Library",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route · Additives Desk": {
+      "main": [
+        [
+          {
+            "node": "Compose Sales Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read TDS Library",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route · Compounding Team": {
+      "main": [
+        [
+          {
+            "node": "Compose Sales Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read TDS Library",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route · Sales Triage": {
+      "main": [
+        [
+          {
+            "node": "Compose Sales Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read TDS Library",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Sales Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Sales Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read TDS Library": {
+      "main": [
+        [
+          {
+            "node": "Resolve TDS Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Sales Alert": {
+      "main": [
+        [
+          {
+            "node": "Hot Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hot Lead?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Ping · Hot Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve TDS Files": {
+      "main": [
+        [
+          {
+            "node": "Has TDS on File?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has TDS on File?": {
+      "main": [
+        [
+          {
+            "node": "Split TDS Files",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Bundle TDS & Compose Buyer Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split TDS Files": {
+      "main": [
+        [
+          {
+            "node": "Download TDS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download TDS": {
+      "main": [
+        [
+          {
+            "node": "Bundle TDS & Compose Buyer Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bundle TDS & Compose Buyer Email": {
+      "main": [
+        [
+          {
+            "node": "Attachments Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attachments Ready?": {
+      "main": [
+        [
+          {
+            "node": "Send Buyer Confirmation + TDS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Buyer Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Riyadh"
+  }
+}

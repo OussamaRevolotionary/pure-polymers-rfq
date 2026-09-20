@@ -3,7 +3,7 @@
   "name": "Pure Polymers — B — Quote Intake",
   "nodes": [
     {
-      "id": "3835580c-a9d0-4a53-bdd2-891d67233359",
+      "id": "b061fc08-3586-48ec-af35-9f5ba3a0a315",
       "name": "Quote Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
@@ -20,10 +20,10 @@
           "ignoreBots": true
         }
       },
-      "webhookId": "ae60ecd8-9bd2-45e9-8c6d-d54ad92c8607"
+      "webhookId": "481386a0-5424-435d-bb17-61f64ff35aa5"
     },
     {
-      "id": "ad4fc982-a410-4494-ac53-43923e10caa7",
+      "id": "492f2b28-282b-4344-ac34-fbcbed400112",
       "name": "Validate & Normalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -38,7 +38,7 @@
       }
     },
     {
-      "id": "92dca796-0ebf-4102-93ce-d24608d0a9c3",
+      "id": "c481a54c-1873-4332-b5cd-a4a69a9a5035",
       "name": "Payload Valid?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -70,7 +70,7 @@
       }
     },
     {
-      "id": "2d85ac35-1b07-422e-9d06-486e22ffaf30",
+      "id": "0e61b02c-9a9c-4e17-8bf6-0134fd3a6954",
       "name": "Find Prior Submission",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
@@ -103,7 +103,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "8971b6d1-6686-4b36-b1f2-8eb59bcdf696",
+      "id": "2d35f607-7c68-4161-bec2-33158da439d4",
       "name": "Already Logged?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -136,7 +136,7 @@
       }
     },
     {
-      "id": "bef30ebf-a441-4ee3-9145-48c5eff29ced",
+      "id": "52363aa9-2db9-48e5-94a3-613115498b94",
       "name": "Respond · Duplicate",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
@@ -153,7 +153,7 @@
       }
     },
     {
-      "id": "0ff98e6d-33ad-40ca-a5cc-e8c600ac5331",
+      "id": "e3ae4768-70f8-4be2-8b2f-04c01fe5b0cb",
       "name": "Write Ledger Row",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
@@ -263,7 +263,7 @@
       "waitBetweenTries": 1500
     },
     {
-      "id": "ec4e39d9-3dd8-4b10-8b9d-ba44f0aff945",
+      "id": "d474bcef-4111-4fbe-a20b-2dde9b725f68",
       "name": "Sheet Row",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -279,7 +279,7 @@
       }
     },
     {
-      "id": "40d6307c-e9b1-4570-89f9-5eae853024d3",
+      "id": "0328dabe-217f-4de9-a029-5bc13568147b",
       "name": "Append to Master Quote Log",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
@@ -657,7 +657,7 @@
       "onError": "continueErrorOutput"
     },
     {
-      "id": "43617237-1881-4360-90a5-ec99446473ee",
+      "id": "6f36e7b0-9690-4813-8e70-ff63cc9d8d57",
       "name": "Respond · Logged",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
@@ -674,7 +674,7 @@
       }
     },
     {
-      "id": "6fe76a0e-80af-4f7f-af85-7d81ef0626ea",
+      "id": "f29b0819-909e-4d27-9762-bb04aaa6fa2b",
       "name": "Alert Ops · Sheet Write Failed",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
@@ -703,7 +703,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "f3deba1b-add2-4f4d-96fe-f51cf59e7844",
+      "id": "d532fa35-904e-4f03-a24a-8337f2257782",
       "name": "Respond · Logged (ledger)",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
@@ -720,7 +720,7 @@
       }
     },
     {
-      "id": "9752e7d9-7716-41af-940e-2239683c7ffa",
+      "id": "509b0af4-da97-419d-99b6-0c322f2948a6",
       "name": "Respond · Rejected",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
@@ -737,7 +737,7 @@
       }
     },
     {
-      "id": "b6a72bf8-d1dc-4c13-bdb2-586a4a34c7f8",
+      "id": "639c4e02-cd1f-4195-87db-d11fbb6f55dc",
       "name": "Route by Product Family",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
@@ -827,7 +827,7 @@
       }
     },
     {
-      "id": "85658aac-5976-47f5-a73d-90d7367eb3ec",
+      "id": "501de922-b6cb-429a-ad57-577604426141",
       "name": "Route · Color Lab",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -876,7 +876,7 @@
       }
     },
     {
-      "id": "98ba6333-7697-4fb6-b8c6-845161f622e8",
+      "id": "82f5f4bf-a666-4d63-b694-46c7f07f3be9",
       "name": "Route · Additives Desk",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -925,7 +925,7 @@
       }
     },
     {
-      "id": "032d5941-1f6c-42cb-9547-389b5e9eb799",
+      "id": "848f4087-f80b-4c61-85fb-8ce5cfdc08eb",
       "name": "Route · Compounding Team",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -974,7 +974,7 @@
       }
     },
     {
-      "id": "51e5ac6a-aa97-4bc5-b80b-3810676cb16d",
+      "id": "4d4385b0-da36-4a26-8bab-6811c735b44f",
       "name": "Route · Sales Triage",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -1023,7 +1023,7 @@
       }
     },
     {
-      "id": "8061bfcd-af28-4c52-b956-f9c91cfe35c3",
+      "id": "d921f109-a9ff-4787-86d3-d086d63426f3",
       "name": "Compose Sales Alert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1039,7 +1039,7 @@
       "executeOnce": true
     },
     {
-      "id": "438f0d63-3a2a-47da-ba83-e594d08f61ce",
+      "id": "2f1b3d97-aba2-4c63-af40-2825796763e9",
       "name": "Read TDS Library",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
@@ -1076,7 +1076,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "a11527a2-17ba-497d-be47-ee488aab4a54",
+      "id": "d2f2b57a-7f13-4e60-93e4-ea2da1cf06ba",
       "name": "Send Sales Alert",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
@@ -1106,7 +1106,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "b94f627f-d25d-4375-a953-a10b663f974e",
+      "id": "0c57177c-f9e3-4d75-8486-784900640eaf",
       "name": "Hot Lead?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -1137,7 +1137,7 @@
       }
     },
     {
-      "id": "7aea883a-fab4-4107-a283-ba7b23c64581",
+      "id": "a820c6b6-8e12-4e93-a2ab-c5f24001210c",
       "name": "WhatsApp Ping · Hot Lead",
       "type": "n8n-nodes-base.whatsApp",
       "typeVersion": 1.1,
@@ -1176,7 +1176,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "312e3eba-af02-448f-9b73-56c671b01421",
+      "id": "0c8dc32c-d318-446e-8443-2661c7980315",
       "name": "Resolve TDS Files",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1191,7 +1191,7 @@
       }
     },
     {
-      "id": "e29af501-d9f5-409f-a3c8-ef912c36dba5",
+      "id": "ecf443cc-fb52-404e-b980-c408e3075be2",
       "name": "Has TDS on File?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -1223,7 +1223,7 @@
       }
     },
     {
-      "id": "9b5b2f86-bed9-4520-bb49-276a38dcc2be",
+      "id": "83e660c1-4293-4e2b-bbdc-7aad413381b6",
       "name": "Split TDS Files",
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
@@ -1238,7 +1238,7 @@
       }
     },
     {
-      "id": "0ccbe37f-fd2a-45a8-9fd6-a71ee4fff3cc",
+      "id": "8a290f50-efdd-49cd-ab58-dadeee720558",
       "name": "Download TDS",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1270,7 +1270,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "42e04d62-cd62-4dc1-ab08-ad4077a22b42",
+      "id": "82297114-db07-4550-9221-79dc9b02c4bd",
       "name": "Bundle TDS & Compose Buyer Email",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1285,7 +1285,7 @@
       }
     },
     {
-      "id": "77d828f4-9c7d-413b-8f63-158a8fa4784a",
+      "id": "2e2db2f5-edaa-469a-8460-7c9932ce5d07",
       "name": "Attachments Ready?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
@@ -1317,7 +1317,7 @@
       }
     },
     {
-      "id": "1d94bcb9-2af8-4b68-bd9a-6791fb8bbcda",
+      "id": "ed876097-73e2-4399-8adb-48d524110310",
       "name": "Send Buyer Confirmation + TDS",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
@@ -1356,7 +1356,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "327414e8-69a7-460e-aaa2-cbdc9a5ff66b",
+      "id": "1e87998a-dc47-409b-8c8c-39217d7707b0",
       "name": "Send Buyer Confirmation",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
@@ -1388,8 +1388,8 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "26c7e395-a064-499a-a476-81a425f40576",
-      "name": "Sticky Note 26c7e395",
+      "id": "fc582a0c-5ef0-4171-8f0d-420da0ecb6e1",
+      "name": "Sticky Note fc582a0c",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1404,8 +1404,8 @@
       }
     },
     {
-      "id": "a475b1b3-7031-47a8-9b02-f4378f0b3344",
-      "name": "Sticky Note a475b1b3",
+      "id": "014c3efc-fd28-45df-bcec-207922a87e48",
+      "name": "Sticky Note 014c3efc",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [

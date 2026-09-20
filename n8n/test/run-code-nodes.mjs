@@ -345,6 +345,73 @@ await run('Shape Reply', async () => {
   assert(dead[0].json.actions[0].type === 'handoff_to_whatsapp', 'and still routes the buyer to a human')
 })
 
+await run('Attach Written Answer', async () => {
+  /* The GPT-5 family often answers a tool turn with no prose. Shape Reply flags that
+     and builds a follow-up request; this node merges the result back in. */
+  const silentToolTurn = await runCodeNode(loadCode('assistant/shape-reply.js', { __ATTEMPT__: '1' }), {
+    input: [
+      {
+        json: {
+          statusCode: 200,
+          body: {
+            model: MODEL,
+            choices: [
+              {
+                finish_reason: 'tool_calls',
+                message: {
+                  role: 'assistant',
+                  content: null,
+                  tool_calls: [
+                    { id: 'call_9', type: 'function', function: { name: 'show_product_cards', arguments: '{"product_ids":["desiccant"],"headline":"Fixes moisture defects"}' } },
+                  ],
+                },
+              },
+            ],
+            usage: { prompt_tokens: 10500, completion_tokens: 40 },
+          },
+        },
+      },
+    ],
+    nodes: { 'Guard & Build Request': { json: guardOut } },
+  })
+
+  const shaped = silentToolTurn[0].json
+  assert(shaped.needsWrittenAnswer === true, 'a tool call with no content asks for a written answer')
+  assert(shaped.reply.length > 0, 'and still carries a canned line as the last resort')
+  assert(shaped.writtenAnswerRequest.tool_choice === 'none', 'the follow-up request disables tools so the model can only write')
+  assert(
+    shaped.writtenAnswerRequest.messages.length === guardOut.request.messages.length + 2,
+    'the follow-up replays the cached prefix plus the tool call and its acknowledgement',
+  )
+  assert(
+    shaped.writtenAnswerRequest.messages[shaped.writtenAnswerRequest.messages.length - 1].tool_call_id === 'call_9',
+    'the acknowledgement answers the exact tool call that was made',
+  )
+
+  const attach = (body, status = 200) =>
+    runCodeNode(loadCode('assistant/attach-written-answer.js'), {
+      input: [{ json: { statusCode: status, body } }],
+      nodes: { 'Shape Reply': { json: shaped } },
+    })
+
+  const merged = await attach({
+    choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Moisture in the regrind is the usual cause.' } }],
+    usage: { completion_tokens: 99, prompt_tokens_details: { cached_tokens: 9984 } },
+  })
+  assert(merged[0].json.reply === 'Moisture in the regrind is the usual cause.', 'the written answer replaces the canned line')
+  assert(
+    merged[0].json.assistantMessage.content === 'Moisture in the regrind is the usual cause.',
+    'and is what the browser stores, so the history matches what the buyer read',
+  )
+  assert(merged[0].json.assistantMessage.tool_calls[0].id === 'call_9', 'the tool call survives so the page still answers it next turn')
+  assert(merged[0].json.meta.writtenAnswerCachedPromptTokens === 9984, 'cache reuse is reported for cost monitoring')
+  assert(merged[0].json.writtenAnswerRequest === undefined, 'the follow-up request never travels on to the browser')
+
+  const failed = await attach({ error: { message: 'upstream exploded' } }, 500)
+  assert(failed[0].json.reply === shaped.reply, 'a failed follow-up keeps the canned line instead of blanking the reply')
+  assert(failed[0].json.ok === true, 'and the turn still succeeds')
+})
+
 /* ─────────────────────────────── C · watchdog ─────────────────────────────── */
 
 await run('Scan SLA & Build Digest', async () => {

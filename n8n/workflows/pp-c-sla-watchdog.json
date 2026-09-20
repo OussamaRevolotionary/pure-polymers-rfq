@@ -3,7 +3,7 @@
   "name": "Pure Polymers — C — SLA Watchdog",
   "nodes": [
     {
-      "id": "25127e28-2bbe-4a3a-af78-5758b72a4b0b",
+      "id": "391a0a5b-573f-4da3-a2a8-9df441ae66d6",
       "name": "Sun–Thu · 08:00, 12:00, 16:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.4,
@@ -23,7 +23,7 @@
       }
     },
     {
-      "id": "da1019b0-f3c9-4328-9022-3ac5dddec801",
+      "id": "fba3868f-bda3-4cbb-af52-a09431c10cf0",
       "name": "Read Master Quote Log",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
@@ -57,7 +57,7 @@
       }
     },
     {
-      "id": "8ec5bc82-5c15-4a57-b201-ad1b12eefe3c",
+      "id": "463c02c6-7938-407b-8618-66a84e6dcfda",
       "name": "Scan SLA & Build Digest",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -73,7 +73,7 @@
       "executeOnce": true
     },
     {
-      "id": "c5914e24-cb85-4469-9858-dd0968597610",
+      "id": "525b298a-4618-4cf7-89b7-144ad4417deb",
       "name": "Send SLA Escalation",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
@@ -101,8 +101,8 @@
       }
     },
     {
-      "id": "cc87992a-3869-4687-8f94-1ef9f4deebb0",
-      "name": "Sticky Note cc87992a",
+      "id": "edd01e70-9633-4e01-8474-a63b294ee6f1",
+      "name": "Sticky Note edd01e70",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [

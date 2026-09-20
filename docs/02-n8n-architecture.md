@@ -174,7 +174,7 @@ apply the changed nodes in place.
 
 ## 2.6 Testing
 
-`node n8n/test/run-code-nodes.mjs` runs every Code node outside n8n against a payload produced by the **frontend's own** `buildPayload()` — so the browser and the backend cannot drift apart silently. 60 assertions cover scoring tiers, the honeypot, the 422 path, the empty-TDS path, transcript validation, the retry classifier, refusal handling and the watchdog's silence. It also writes `n8n/previews/*.html` so the emails can be reviewed in a browser before anything is sent.
+`node n8n/test/run-code-nodes.mjs` runs every Code node outside n8n against a payload produced by the **frontend's own** `buildPayload()` — so the browser and the backend cannot drift apart silently. 72 assertions cover scoring tiers, the honeypot, the 422 path, the empty-TDS path, transcript validation, the retry classifier, refusal handling and the watchdog's silence. It also writes `n8n/previews/*.html` so the emails can be reviewed in a browser before anything is sent.
 
 ## 2.7 Roadmap
 

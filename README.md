@@ -38,21 +38,30 @@ Everything derives from one file — [`quote-portal/src/data/catalog.js`](quote-
 cd quote-portal && npm install && npm run dev
 ```
 
-Opens on <http://localhost:8787>. With no `.env.local` it runs in **preview mode**: submissions are simulated (clearly labelled) and the assistant uses the built-in offline engine, so the demo works with no backend and no API key.
+Opens on <http://localhost:8787>, which is one of the origins the n8n webhooks allow, so
+the dev server talks to the **live backend** out of the box: `.env` carries the two
+production webhook URLs and they are not secrets — the browser calls them directly.
 
-To connect the real backend, copy `.env.example` to `.env.local` and fill in the two n8n webhook URLs.
+Blank either URL (in `.env` or a local `.env.local`) to run in **preview mode** instead:
+submissions are simulated and clearly labelled, and the assistant falls back to the
+built-in offline engine, so the demo still works with no backend and no API key.
 
 Add `?static=1` to the URL to freeze animations for screenshots.
 
 ## Deploy the backend
 
+The three workflows are already deployed and published. To rebuild them from source:
+
 ```bash
 node agent/build.mjs              # regenerate the system prompt + tool schemas
 node n8n/build.mjs                # validate and export the three workflows
-node n8n/test/run-code-nodes.mjs  # 56 checks + rendered email previews
+node n8n/test/run-code-nodes.mjs  # 72 checks + rendered email previews
 ```
 
-Then follow the setup checklist in [`docs/02-n8n-architecture.md`](docs/02-n8n-architecture.md#25-setup-checklist) — import the JSON, bind credentials, create the sheet tabs and the data table, activate.
+`n8n/build.mjs` prints the prompt fingerprint; the running assistant returns the same
+value as `promptFingerprint`, so a stale deploy is easy to spot. Deployment state, the
+production URLs and what is still outstanding are in
+[`docs/02-n8n-architecture.md`](docs/02-n8n-architecture.md#25-deployment-status).
 
 ## How a request flows
 
@@ -73,7 +82,7 @@ builds to GitHub Pages.
 |---|---|
 | Frontend | Built and exercised end to end at 1440px and 375px — no console errors, no horizontal overflow |
 | n8n workflows | Deployed and published: 33 + 16 + 5 nodes, timezone Asia/Riyadh |
-| Code nodes | 60 assertions passing against a payload produced by the frontend's own builder |
+| Code nodes | 72 assertions passing against a payload produced by the frontend's own builder |
 | Quote pipeline | Verified against the production webhook: ledger row, sheet row, both emails, duplicate suppression, honeypot, bot filtering |
 | AI assistant | Verified live on `gpt-5.4-mini`: prose + product cards, correct qualification, regulatory handoff, conversion logged. Deployed prompt integrity checked by fingerprint |
 | Emails | Rendered to `n8n/previews/*.html` and received in a real inbox |

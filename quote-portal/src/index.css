@@ -118,6 +118,15 @@
   color: var(--color-ink-300);
 }
 
+/* An Arabic eyebrow (the assistant writes its card headline in the buyer's language):
+   letter-spacing pulls Arabic letters apart and the mono face has no Arabic glyphs. */
+.eyebrow[dir='rtl'] {
+  font-family: var(--font-arabic);
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 @utility hairline {
   border-color: rgb(255 255 255 / 0.08);
 }

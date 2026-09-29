@@ -189,6 +189,16 @@ await run('Bundle TDS & Compose Buyer Email', async () => {
   assert(noTds[0].json.hasAttachments === false, 'no-TDS path still composes an email')
   assert(noTds[0].json.html.includes('technical data sheet follows'), 'and promises the data sheet explicitly')
   writeFileSync(join(previews, 'buyer-confirmation-no-tds.html'), noTds[0].json.html)
+
+  const arabicLead = { ...validated, lead: { ...validated.lead, contact: { ...validated.lead.contact, language: 'ar' } } }
+  const arabic = await runCodeNode(loadCode('quote/compose-buyer-email.js'), {
+    input: [{ json: resolved }],
+    nodes: { 'Validate & Normalize': { json: arabicLead }, 'Resolve TDS Files': { json: resolved }, 'Route · Additives Desk': routeNode },
+  })
+  const html = arabic[0].json.html
+  assert(html.includes('<p dir="rtl"') && html.indexOf('<p dir="rtl"') < html.indexOf('Dear '), 'an Arabic reply opens with a right-to-left Arabic paragraph')
+  assert(html.includes('<span dir="ltr" style="white-space:nowrap;">PP-8942-AM</span>'), 'and the reference inside it is isolated so it cannot wrap or reorder')
+  assert(!validated.lead.contact.language || validated.lead.contact.language === 'en', 'the English fixture stays English')
 })
 
 /* ─────────────────────────────── A · assistant ─────────────────────────────── */

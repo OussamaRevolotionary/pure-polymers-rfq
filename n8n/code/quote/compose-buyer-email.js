@@ -86,10 +86,14 @@ const attachmentLine = attachedNames.length
   ? 'Attached to this email: technical data sheets for ' + attachedNames.join(', ') + '.'
   : 'Your technical data sheet follows from the ' + route.route_team + ' with the quotation.'
 
+// Latin runs inside the Arabic paragraph are isolated and kept on one line: left to
+// the bidi algorithm, a reference that wraps at a hyphen comes out as "-PP" / "2939-CM".
+const ltr = (text) => '<span dir="ltr" style="white-space:nowrap;">' + esc(text) + '</span>'
+
 const body =
   (arabic
     ? '<p dir="rtl" style="margin:0 0 14px;font:15px/1.7 Arial,sans-serif;color:' + BRAND.text + ';">' +
-      'شكراً لتواصلكم مع Pure Polymers. تم استلام طلب عرض السعر الخاص بكم وتسجيله برقم مرجعي ' + esc(lead.reference) + '.' +
+      'شكراً لتواصلكم مع ' + ltr('Pure Polymers') + '. تم استلام طلب عرض السعر الخاص بكم وتسجيله برقم مرجعي ' + ltr(lead.reference) + '.' +
       '</p>'
     : '') +
   '<p style="margin:0;font:15px/1.6 Arial,sans-serif;color:' + BRAND.text + ';">Dear ' + esc(lead.contact.firstName) + ',</p>' +

@@ -5,10 +5,16 @@ import { TOOL } from '../../lib/assistant/tools.js'
 import { whatsappLink } from '../../lib/whatsapp.js'
 import { ProductIcon } from '../ui/icons.jsx'
 
+const ARABIC = /[؀-ۿ]/
+
 function ProductCards({ input, onAddProduct, selectedIds }) {
   return (
     <div className="space-y-2">
-      {input.headline ? <p className="eyebrow">{input.headline}</p> : null}
+      {input.headline ? (
+        <p className="eyebrow" dir={ARABIC.test(input.headline) ? 'rtl' : undefined}>
+          {input.headline}
+        </p>
+      ) : null}
       {input.productIds.map((id) => {
         const product = PRODUCT_BY_ID[id]
         const added = selectedIds.includes(id)
@@ -100,7 +106,8 @@ function WhatsAppCard({ input }) {
         rel="noopener noreferrer"
         className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#1ea952] py-2 text-xs font-medium text-white transition hover:bg-[#22bf5d]"
       >
-        {arabic ? 'متابعة على واتساب' : 'Continue on WhatsApp'} · +966 54 646 0891
+        {/* Isolated, or the right-to-left card lays the digit groups out backwards: "0891 646 54 966+". */}
+        {arabic ? 'متابعة على واتساب' : 'Continue on WhatsApp'} · <bdi dir="ltr">+966 54 646 0891</bdi>
       </a>
     </div>
   )

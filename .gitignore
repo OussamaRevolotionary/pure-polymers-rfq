@@ -11,3 +11,9 @@ Inputs/
 
 # Generated email previews written by the Code-node test run
 n8n/previews/
+
+# Client correspondence drafted from this project. Never published.
+outreach/
+
+# Walkthrough video renders (frames and MP4s)
+video/out/

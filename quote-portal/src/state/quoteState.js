@@ -131,7 +131,10 @@ export function quoteReducer(state, action) {
         },
         contact: {
           ...next.contact,
-          notes: p.notes ? [next.contact.notes, p.notes].filter(Boolean).join('\n') : next.contact.notes,
+          // The same prefill is applied when the card arrives and again on "Review & submit",
+          // so the assistant's notes are merged once rather than appended on every apply.
+          notes:
+            p.notes && !next.contact.notes.includes(p.notes) ? [next.contact.notes, p.notes].filter(Boolean).join('\n') : next.contact.notes,
           language: p.language || next.contact.language,
         },
         prefilledBy: 'assistant',
